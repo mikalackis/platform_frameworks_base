@@ -10,6 +10,7 @@ LOCAL_SRC_FILES += \
     java/com/android/server/am/EventLogTags.logtags
 
 LOCAL_JAVA_LIBRARIES := services.net telephony-common
-LOCAL_STATIC_JAVA_LIBRARIES := tzdata_update
+LOCAL_STATIC_JAVA_LIBRARIES := tzdata_update \
+                               com.ariel.platform.internal
 
 include $(BUILD_STATIC_JAVA_LIBRARY)

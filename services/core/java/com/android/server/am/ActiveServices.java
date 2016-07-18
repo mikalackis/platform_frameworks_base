@@ -330,6 +330,9 @@ public final class ActiveServices {
         if (res == null) {
             return null;
         }
+        if (res.forwarded) {
+            return service.getComponent();
+        }
         if (res.record == null) {
             return new ComponentName("!", res.permission != null
                     ? res.permission : "private to package");
@@ -494,6 +497,9 @@ public final class ActiveServices {
         ServiceLookupResult r = retrieveServiceLocked(service, resolvedType, null,
                 Binder.getCallingPid(), Binder.getCallingUid(), userId, false, false);
         if (r != null) {
+            if (r.forwarded == true) {
+                return 1;
+            }
             if (r.record != null) {
                 final long origId = Binder.clearCallingIdentity();
                 try {
@@ -755,6 +761,9 @@ public final class ActiveServices {
         if (res.record == null) {
             return -1;
         }
+        if (res.forwarded == true) {
+            return 1;
+        }
         ServiceRecord s = res.record;
 
         final long origId = Binder.clearCallingIdentity();
@@ -1001,10 +1010,18 @@ public final class ActiveServices {
     private final class ServiceLookupResult {
         final ServiceRecord record;
         final String permission;
+        final boolean forwarded;
 
         ServiceLookupResult(ServiceRecord _record, String _permission) {
             record = _record;
             permission = _permission;
+            forwarded = false;
+        }
+
+        ServiceLookupResult(ServiceRecord _record, String _permission, boolean _forwarded) {
+            record = _record;
+            permission = _permission;
+            forwarded = _forwarded;
         }
     }
 
@@ -1125,9 +1142,19 @@ public final class ActiveServices {
                 }
             }
 
-            if (!mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
-                    resolvedType, r.appInfo)) {
+//            if (!mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
+//                    resolvedType, r.appInfo)) {
+//                return null;
+//            }
+//            return new ServiceLookupResult(r, null);
+
+            int ifw = mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
+                    resolvedType, r.appInfo);
+            if (ifw == 1) { //block
                 return null;
+            }
+            if (ifw == 2) { //forwarded
+                return new ServiceLookupResult(r, null, true);
             }
             return new ServiceLookupResult(r, null);
         }
