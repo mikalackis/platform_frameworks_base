@@ -1142,21 +1142,21 @@ public final class ActiveServices {
                 }
             }
 
-//            if (!mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
-//                    resolvedType, r.appInfo)) {
-//                return null;
-//            }
-//            return new ServiceLookupResult(r, null);
-
-            int ifw = mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
-                    resolvedType, r.appInfo);
-            if (ifw == 1) { //block
+            if (!mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
+                    resolvedType, r.appInfo)) {
                 return null;
             }
-            if (ifw == 2) { //forwarded
-                return new ServiceLookupResult(r, null, true);
-            }
             return new ServiceLookupResult(r, null);
+
+//            int ifw = mAm.mIntentFirewall.checkService(r.name, service, callingUid, callingPid,
+//                    resolvedType, r.appInfo);
+//            if (ifw == 1) { //block
+//                return null;
+//            }
+//            if (ifw == 2) { //forwarded
+//                return new ServiceLookupResult(r, null, true);
+//            }
+//            return new ServiceLookupResult(r, null);
         }
         return null;
     }

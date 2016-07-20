@@ -7134,7 +7134,7 @@ public final class ActivityManagerService extends ActivityManagerNative
         public Context getSystemContext() {
             return mContext;
         }
-        //
+        // IEM
         @Override
         public Object getAMSLock() {
             return ActivityManagerService.this;
@@ -15801,9 +15801,15 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        if (callingPackage == null) {
-            throw new IllegalArgumentException("callingPackage cannot be null");
-        }
+        /*
+         * Commented out by mikalackis
+         * Originally this was part of IEM but some of the intent services ,like googles,
+         * do not carry info about the package thus this exception causes
+         * these apps to fail.
+         */
+//        if (callingPackage == null) {
+//            throw new IllegalArgumentException("callingPackage cannot be null");
+//        }
 
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE,
                 "startService: " + service + " type=" + resolvedType);
@@ -15854,9 +15860,15 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        if (callingPackage == null) {
-            throw new IllegalArgumentException("callingPackage cannot be null");
-        }
+        /*
+         * Commented out by mikalackis
+         * Originally this was part of IEM but some of the intent services ,like googles,
+         * do not carry info about the package thus this exception causes
+         * these apps to fail.
+         */
+//        if (callingPackage == null) {
+//            throw new IllegalArgumentException("callingPackage cannot be null");
+//        }
 
         synchronized(this) {
             return mServices.peekServiceLocked(service, resolvedType, callingPackage);
@@ -16038,9 +16050,15 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        if (callingPackage == null) {
-            throw new IllegalArgumentException("callingPackage cannot be null");
-        }
+        /*
+         * Commented out by mikalackis
+         * Originally this was part of IEM but some of the intent services ,like googles,
+         * do not carry info about the package thus this exception causes
+         * these apps to fail.
+         */
+//        if (callingPackage == null) {
+//            throw new IllegalArgumentException("callingPackage cannot be null");
+//        }
 
         synchronized(this) {
             return mServices.bindServiceLocked(caller, token, service,

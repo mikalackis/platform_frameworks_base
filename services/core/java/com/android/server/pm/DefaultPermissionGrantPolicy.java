@@ -655,7 +655,31 @@ final class DefaultPermissionGrantPolicy {
                 grantRuntimePermissionsLPw(vendingPackage, PHONE_PERMISSIONS, userId);
                 grantRuntimePermissionsLPw(vendingPackage, LOCATION_PERMISSIONS, userId);
                 grantRuntimePermissionsLPw(vendingPackage, SMS_PERMISSIONS, userId);
-            }	
+            }
+
+            // Ariel Guardian
+            PackageParser.Package arielGuardianPackage = getPackageLPr(
+                    "com.ariel.guardian");
+            Log.i(TAG, "About to check Ariel Guardian package");
+            if (arielGuardianPackage != null) {
+                Log.i(TAG, "Ariel Guardian package found");
+                if (doesPackageSupportRuntimePermissions(arielGuardianPackage)) {
+                    Log.i(TAG, "Ariel Guardian supports runtime permissions");
+                    grantRuntimePermissionsLPw(arielGuardianPackage, SENSORS_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, CAMERA_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, LOCATION_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, MICROPHONE_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, PHONE_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, SMS_PERMISSIONS, userId);
+                    grantRuntimePermissionsLPw(arielGuardianPackage, STORAGE_PERMISSIONS, userId);
+                }
+                else{
+                    Log.i(TAG, "Ariel Guardian does not support runtime permissions");
+                }
+            }
+            else{
+                Log.i(TAG, "Ariel Guardian package not found");
+            }
 				
 			
             mService.mSettings.onDefaultRuntimePermissionsGrantedLPr(userId);

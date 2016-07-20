@@ -63,8 +63,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 
-import ariel.providers.ArielSettings;
-
 public class IntentFirewall {
     static final String TAG = "IntentFirewall";
 
@@ -231,6 +229,7 @@ public class IntentFirewall {
         Bundle data = new Bundle();
         if (caller != null) data.putBinder("caller", caller.asBinder());
         data.putBinder("token", token);
+        Log.i(TAG, "Sending action: "+action+" for package "+callerPackage);
         data.putString(IFW_SERVICE_ACTION, action);
         data.putParcelable("intent", service);
         data.putInt("intentType", TYPE_SERVICE);
@@ -307,22 +306,22 @@ public class IntentFirewall {
         return false;
     }
 
-    public int checkService(ComponentName resolvedService, Intent intent, int callerUid,
+    public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
             int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
         int res = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
         Log.i(TAG, "In checkService method, res = "+res);
         switch(res) {
             case ALLOW_INTENT:
-                return 0;
+                return true;
             case BLOCK_INTENT:
-                return 1;
+                return false;
             case FORWARD_INTENT:
-                sendServiceToUserFirewall(null, null, intent, resolvedType, null, intent.getFlags(), 0,
-                    intent.getAction(), callerUid, callerPid, resolvedApp.packageName);
-                return 2;
+//                sendServiceToUserFirewall(null, null, intent, resolvedType, null, intent.getFlags(), 0,
+//                    intent.getAction(), callerUid, callerPid, resolvedApp.packageName);
+                return true;
         }
-        return 1;
+        return true;
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
@@ -336,8 +335,8 @@ public class IntentFirewall {
             case BLOCK_INTENT:
                 return false;
             case FORWARD_INTENT:
-                sendBroadcastToUserFirewall(null, intent, resolvedType, null, -1, null,
-                    null, null, -1, false,  false, 0);
+//                sendBroadcastToUserFirewall(null, intent, resolvedType, null, -1, null,
+//                    null, null, -1, false,  false, 0);
                 return true;
         }
         return false;
@@ -404,6 +403,7 @@ public class IntentFirewall {
 
         // For the first pass, find all the rules that have at least one intent-filter or
         // component-filter that matches this intent
+
         List<Rule> candidateRules;
         candidateRules = resolver.queryIntent(intent, resolvedType, false, 0);
         if (candidateRules == null) {
