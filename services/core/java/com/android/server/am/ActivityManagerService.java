@@ -450,17 +450,6 @@ public final class ActivityManagerService extends ActivityManagerNative
                 + (isFg ? "foreground" : "background") + " queue");
         return (isFg) ? mFgBroadcastQueue : mBgBroadcastQueue;
     }
-    // IEM
-    BroadcastRecord broadcastRecordForReceiverLocked(IBinder receiver) {
-        for (BroadcastQueue queue : mBroadcastQueues) {
-            BroadcastRecord r = queue.getMatchingOrderedReceiver(receiver);
-            if (r != null) {
-                return r;
-            }
-        }
-        return null;
-    }
-    // IEM
 
     /**
      * Activity we have told the window manager to have key focus.
@@ -3277,6 +3266,15 @@ public final class ActivityManagerService extends ActivityManagerNative
         checkTime(startTime, "startProcess: done updating cpu stats");
 
         try {
+            try {
+                if (AppGlobals.getPackageManager().isPackageFrozen(app.info.packageName)) {
+                    // This is caught below as if we had failed to fork zygote
+                    throw new RuntimeException("Package " + app.info.packageName + " is frozen!");
+                }
+            } catch (RemoteException e) {
+                throw e.rethrowAsRuntimeException();
+            }
+
             int uid = app.uid;
             int[] gids = null;
             int mountExternal = Zygote.MOUNT_EXTERNAL_NONE;
@@ -7078,66 +7076,15 @@ public final class ActivityManagerService extends ActivityManagerNative
             return ActivityManagerService.this.checkComponentPermission(permission, pid, uid,
                     owningUid, exported);
         }
-        //IEM
-        @Override
-        public final int startActivityAsUser(IApplicationThread caller, String callingPackage,
-                Intent intent, String resolvedType, IBinder resultTo, String resultWho, int requestCode,
-                int startFlags, ProfilerInfo profilerInfo, Bundle options, int userId) {
-            return ActivityManagerService.this.startActivityAsUser(caller, callingPackage, intent,
-                resolvedType, resultTo, resultWho, requestCode, startFlags, profilerInfo, options,
-                userId);
-        }
 
-        @Override
-        public int bindService(IApplicationThread caller, IBinder token,
-                Intent service, String resolvedType,
-                IServiceConnection connection, int flags, int userId) {
-            try {
-                return ActivityManagerService.this.bindService(caller, token, service, resolvedType, connection, flags, service.getPackage(), userId);
-            }
-            catch(TransactionTooLargeException tle){
-                return -1;
-            }
-        }
-
-        @Override
-        public IBinder peekService(Intent service, String resolvedType) {
-            return ActivityManagerService.this.peekService(service, resolvedType, service.getPackage());
-        }
-
-        @Override
-        public ComponentName startService(IApplicationThread caller, Intent service,
-                String resolvedType, int userId) {
-            try {
-                return ActivityManagerService.this.startService(caller, service, resolvedType, service.getPackage(), userId);
-            }
-            catch(TransactionTooLargeException tle){
-                return null;
-            }
-        }
-
-        @Override
-        public int stopService(IApplicationThread caller, Intent service,
-                String resolvedType, int userId) {
-            return ActivityManagerService.this.stopService(caller, service, resolvedType, userId);
-        }
-
-        @Override
-         public int broadcastIntent(IApplicationThread caller, Intent intent, String resolvedType, IIntentReceiver resultTo,
-                 int resultCode, String resultData, Bundle map, String[] requiredPermissions, int appOp, boolean serialized,
-                 boolean sticky, int userId) {
-            return ActivityManagerService.this.broadcastIntent(caller, intent, resolvedType, resultTo, resultCode, resultData,
-                map, requiredPermissions, appOp, null, serialized, sticky, userId);
-        }
-
-        @Override
-        public Context getSystemContext() {
-            return mContext;
-        }
-        // IEM
         @Override
         public Object getAMSLock() {
             return ActivityManagerService.this;
+        }
+
+        @Override
+        public Context getContext() {
+            return mContext;
         }
     }
 
@@ -15801,15 +15748,9 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        /*
-         * Commented out by mikalackis
-         * Originally this was part of IEM but some of the intent services ,like googles,
-         * do not carry info about the package thus this exception causes
-         * these apps to fail.
-         */
-//        if (callingPackage == null) {
-//            throw new IllegalArgumentException("callingPackage cannot be null");
-//        }
+        if (callingPackage == null) {
+            throw new IllegalArgumentException("callingPackage cannot be null");
+        }
 
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE,
                 "startService: " + service + " type=" + resolvedType);
@@ -15860,15 +15801,9 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        /*
-         * Commented out by mikalackis
-         * Originally this was part of IEM but some of the intent services ,like googles,
-         * do not carry info about the package thus this exception causes
-         * these apps to fail.
-         */
-//        if (callingPackage == null) {
-//            throw new IllegalArgumentException("callingPackage cannot be null");
-//        }
+        if (callingPackage == null) {
+            throw new IllegalArgumentException("callingPackage cannot be null");
+        }
 
         synchronized(this) {
             return mServices.peekServiceLocked(service, resolvedType, callingPackage);
@@ -16050,15 +15985,9 @@ public final class ActivityManagerService extends ActivityManagerNative
             throw new IllegalArgumentException("File descriptors passed in Intent");
         }
 
-        /*
-         * Commented out by mikalackis
-         * Originally this was part of IEM but some of the intent services ,like googles,
-         * do not carry info about the package thus this exception causes
-         * these apps to fail.
-         */
-//        if (callingPackage == null) {
-//            throw new IllegalArgumentException("callingPackage cannot be null");
-//        }
+        if (callingPackage == null) {
+            throw new IllegalArgumentException("callingPackage cannot be null");
+        }
 
         synchronized(this) {
             return mServices.bindServiceLocked(caller, token, service,
