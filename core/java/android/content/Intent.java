@@ -4333,7 +4333,6 @@ public class Intent implements Parcelable, Cloneable {
     private Intent mSelector;
     private ClipData mClipData;
     private int mContentUserHint = UserHandle.USER_CURRENT;
-    public  String ifwToken;
 
     // ---------------------------------------------------------------------
 
@@ -4368,9 +4367,6 @@ public class Intent implements Parcelable, Cloneable {
         }
         if (o.mClipData != null) {
             this.mClipData = new ClipData(o.mClipData);
-        }
-        if (o.ifwToken != null) {
-            this.ifwToken = new String(o.ifwToken);
         }
     }
 
@@ -7763,12 +7759,6 @@ public class Intent implements Parcelable, Cloneable {
         out.writeString(mPackage);
         ComponentName.writeToParcel(mComponent, out);
 
-        if (ifwToken != null) {
-            out.writeInt(1);
-            out.writeString(ifwToken);
-        } else {
-            out.writeInt(0);
-        }
         if (mSourceBounds != null) {
             out.writeInt(1);
             mSourceBounds.writeToParcel(out, flags);
@@ -7825,10 +7815,6 @@ public class Intent implements Parcelable, Cloneable {
         mFlags = in.readInt();
         mPackage = in.readString();
         mComponent = ComponentName.readFromParcel(in);
-
-        if (in.readInt() != 0) {
-            ifwToken = in.readString();
-        }
 
         if (in.readInt() != 0) {
             mSourceBounds = Rect.CREATOR.createFromParcel(in);

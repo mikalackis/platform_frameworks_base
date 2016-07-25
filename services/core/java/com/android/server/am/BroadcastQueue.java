@@ -410,7 +410,7 @@ public final class BroadcastQueue {
                     || receiver.applicationInfo.uid != nextReceiver.applicationInfo.uid
                     || !receiver.processName.equals(nextReceiver.processName)) {
                 // In this case, we are ready to process the next receiver for the current broadcast,
-                // but are on a queue that would like to wait for services to finish before moving
+                // but are on a queue that would like to wait for services to finish before moving
                 // on.  If there are background services currently starting, then we will go into a
                 // special state where we hold off on continuing this broadcast until they are done.
                 if (mService.mServices.hasBackgroundServices(r.userId)) {

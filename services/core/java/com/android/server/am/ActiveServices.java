@@ -304,7 +304,7 @@ public final class ActiveServices {
     }
 
     ComponentName startServiceLocked(IApplicationThread caller, Intent service, String resolvedType,
-                                     int callingPid, int callingUid, String callingPackage, int userId)
+            int callingPid, int callingUid, String callingPackage, int userId)
             throws TransactionTooLargeException {
         if (DEBUG_DELAYED_STARTS) Slog.v(TAG_SERVICE, "startService: " + service
                 + " type=" + resolvedType + " args=" + service.getExtras());
@@ -315,8 +315,8 @@ public final class ActiveServices {
             if (callerApp == null) {
                 throw new SecurityException(
                         "Unable to find app for caller " + caller
-                                + " (pid=" + Binder.getCallingPid()
-                                + ") when starting service " + service);
+                        + " (pid=" + Binder.getCallingPid()
+                        + ") when starting service " + service);
             }
             callerFg = callerApp.setSchedGroup != Process.THREAD_GROUP_BG_NONINTERACTIVE;
         } else {
@@ -325,8 +325,8 @@ public final class ActiveServices {
 
 
         ServiceLookupResult res =
-                retrieveServiceLocked(service, resolvedType, callingPackage,
-                        callingPid, callingUid, userId, true, callerFg);
+            retrieveServiceLocked(service, resolvedType, callingPackage,
+                    callingPid, callingUid, userId, true, callerFg);
         if (res == null) {
             return null;
         }
@@ -421,7 +421,7 @@ public final class ActiveServices {
     }
 
     ComponentName startServiceInnerLocked(ServiceMap smap, Intent service, ServiceRecord r,
-                                          boolean callerFg, boolean addToStarting) throws TransactionTooLargeException {
+            boolean callerFg, boolean addToStarting) throws TransactionTooLargeException {
         ProcessStats.ServiceState stracker = r.getTracker();
         if (stracker != null) {
             stracker.setStarted(true, mAm.mProcessStats.getMemFactorLocked(), r.lastActivity);
@@ -478,7 +478,7 @@ public final class ActiveServices {
     }
 
     int stopServiceLocked(IApplicationThread caller, Intent service,
-                          String resolvedType, int userId) {
+            String resolvedType, int userId) {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "stopService: " + service
                 + " type=" + resolvedType);
 
@@ -486,8 +486,8 @@ public final class ActiveServices {
         if (caller != null && callerApp == null) {
             throw new SecurityException(
                     "Unable to find app for caller " + caller
-                            + " (pid=" + Binder.getCallingPid()
-                            + ") when stopping service " + service);
+                    + " (pid=" + Binder.getCallingPid()
+                    + ") when stopping service " + service);
         }
 
         // If this service is active, make sure it is stopped.
@@ -520,9 +520,9 @@ public final class ActiveServices {
             if (r.record == null) {
                 throw new SecurityException(
                         "Permission Denial: Accessing service"
-                                + " from pid=" + Binder.getCallingPid()
-                                + ", uid=" + Binder.getCallingUid()
-                                + " requires " + r.permission);
+                        + " from pid=" + Binder.getCallingPid()
+                        + ", uid=" + Binder.getCallingUid()
+                        + " requires " + r.permission);
             }
             IntentBindRecord ib = r.record.bindings.get(r.record.intent);
             if (ib != null) {
@@ -534,7 +534,7 @@ public final class ActiveServices {
     }
 
     boolean stopServiceTokenLocked(ComponentName className, IBinder token,
-                                   int startId) {
+            int startId) {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "stopServiceToken: " + className
                 + " " + token + " startId=" + startId);
         ServiceRecord r = findServiceLocked(className, token, UserHandle.getCallingUserId());
@@ -583,7 +583,7 @@ public final class ActiveServices {
     }
 
     public void setServiceForegroundLocked(ComponentName className, IBinder token,
-                                           int id, Notification notification, boolean removeNotification) {
+            int id, Notification notification, boolean removeNotification) {
         final int userId = UserHandle.getCallingUserId();
         final long origId = Binder.clearCallingIdentity();
         try {
@@ -657,7 +657,7 @@ public final class ActiveServices {
     }
 
     private boolean updateServiceClientActivitiesLocked(ProcessRecord proc,
-                                                        ConnectionRecord modCr, boolean updateLru) {
+            ConnectionRecord modCr, boolean updateLru) {
         if (modCr != null && modCr.binding.client != null) {
             if (modCr.binding.client.activities.size() <= 0) {
                 // This connection is from a client without activities, so adding
@@ -695,8 +695,8 @@ public final class ActiveServices {
     }
 
     int bindServiceLocked(IApplicationThread caller, IBinder token, Intent service,
-                          String resolvedType, IServiceConnection connection, int flags,
-                          String callingPackage, int userId) throws TransactionTooLargeException {
+            String resolvedType, IServiceConnection connection, int flags,
+            String callingPackage, int userId) throws TransactionTooLargeException {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "bindService: " + service
                 + " type=" + resolvedType + " conn=" + connection.asBinder()
                 + " flags=0x" + Integer.toHexString(flags));
@@ -704,8 +704,8 @@ public final class ActiveServices {
         if (callerApp == null) {
             throw new SecurityException(
                     "Unable to find app for caller " + caller
-                            + " (pid=" + Binder.getCallingPid()
-                            + ") when binding service " + service);
+                    + " (pid=" + Binder.getCallingPid()
+                    + ") when binding service " + service);
         }
 
         ActivityRecord activity = null;
@@ -747,8 +747,8 @@ public final class ActiveServices {
         final boolean callerFg = callerApp.setSchedGroup != Process.THREAD_GROUP_BG_NONINTERACTIVE;
 
         ServiceLookupResult res =
-                retrieveServiceLocked(service, resolvedType, callingPackage,
-                        Binder.getCallingPid(), Binder.getCallingUid(), userId, true, callerFg);
+            retrieveServiceLocked(service, resolvedType, callingPackage,
+                    Binder.getCallingPid(), Binder.getCallingUid(), userId, true, callerFg);
         if (res == null) {
             return 0;
         }
@@ -895,8 +895,8 @@ public final class ActiveServices {
                                 c.conn.connected(r.name, service);
                             } catch (Exception e) {
                                 Slog.w(TAG, "Failure sending service " + r.name +
-                                        " to connection " + c.conn.asBinder() +
-                                        " (in " + c.binding.client.processName + ")", e);
+                                      " to connection " + c.conn.asBinder() +
+                                      " (in " + c.binding.client.processName + ")", e);
                             }
                         }
                     }
@@ -915,7 +915,7 @@ public final class ActiveServices {
         ArrayList<ConnectionRecord> clist = mServiceConnections.get(binder);
         if (clist == null) {
             Slog.w(TAG, "Unbind failed: could not find connection for "
-                    + connection.asBinder());
+                  + connection.asBinder());
             return false;
         }
 
@@ -936,7 +936,7 @@ public final class ActiveServices {
                         r.binding.service.app.treatLikeActivity = true;
                         mAm.updateLruProcessLocked(r.binding.service.app,
                                 r.binding.service.app.hasClientActivities
-                                        || r.binding.service.app.treatLikeActivity, null);
+                                || r.binding.service.app.treatLikeActivity, null);
                     }
                     mAm.updateOomAdjLocked(r.binding.service.app);
                 }
@@ -993,7 +993,7 @@ public final class ActiveServices {
     }
 
     private final ServiceRecord findServiceLocked(ComponentName name,
-                                                  IBinder token, int userId) {
+            IBinder token, int userId) {
         ServiceRecord r = getServiceByName(name, userId);
         return r == token ? r : null;
     }
@@ -1023,8 +1023,8 @@ public final class ActiveServices {
     }
 
     private ServiceLookupResult retrieveServiceLocked(Intent service,
-                                                      String resolvedType, String callingPackage, int callingPid, int callingUid, int userId,
-                                                      boolean createIfNeeded, boolean callingFromFg) {
+            String resolvedType, String callingPackage, int callingPid, int callingUid, int userId,
+            boolean createIfNeeded, boolean callingFromFg) {
         ServiceRecord r = null;
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "retrieveServiceLocked: " + service
                 + " type=" + resolvedType + " callingUid=" + callingUid);
@@ -1044,14 +1044,14 @@ public final class ActiveServices {
         if (r == null) {
             try {
                 ResolveInfo rInfo =
-                        AppGlobals.getPackageManager().resolveService(
+                    AppGlobals.getPackageManager().resolveService(
                                 service, resolvedType,
                                 ActivityManagerService.STOCK_PM_FLAGS, userId);
                 ServiceInfo sInfo =
-                        rInfo != null ? rInfo.serviceInfo : null;
+                    rInfo != null ? rInfo.serviceInfo : null;
                 if (sInfo == null) {
                     Slog.w(TAG_SERVICE, "Unable to start service " + service + " U=" + userId +
-                            ": not found");
+                          ": not found");
                     return null;
                 }
                 ComponentName name = new ComponentName(
@@ -1163,7 +1163,7 @@ public final class ActiveServices {
     }
 
     private final boolean requestServiceBindingLocked(ServiceRecord r, IntentBindRecord i,
-                                                      boolean execInFg, boolean rebind) throws TransactionTooLargeException {
+            boolean execInFg, boolean rebind) throws TransactionTooLargeException {
         if (r.app == null || r.app.thread == null) {
             // If service is not currently running, can't yet bind.
             return false;
@@ -1197,7 +1197,7 @@ public final class ActiveServices {
     }
 
     private final boolean scheduleServiceRestartLocked(ServiceRecord r,
-                                                       boolean allowCancel) {
+            boolean allowCancel) {
         boolean canceled = false;
 
         ServiceMap smap = getServiceMap(r.userId);
@@ -1331,7 +1331,7 @@ public final class ActiveServices {
     }
 
     private final boolean unscheduleServiceRestartLocked(ServiceRecord r, int callingUid,
-                                                         boolean force) {
+            boolean force) {
         if (!force && r.restartDelay == 0) {
             return false;
         }
@@ -1369,7 +1369,7 @@ public final class ActiveServices {
     }
 
     private final String bringUpServiceLocked(ServiceRecord r, int intentFlags, boolean execInFg,
-                                              boolean whileRestarting) throws TransactionTooLargeException {
+            boolean whileRestarting) throws TransactionTooLargeException {
         //Slog.i(TAG, "Bring up service:");
         //r.dump("  ");
 
@@ -1428,7 +1428,7 @@ public final class ActiveServices {
         if (!isolated) {
             app = mAm.getProcessRecordLocked(procName, r.appInfo.uid, false);
             if (DEBUG_MU) Slog.v(TAG_MU, "bringUpServiceLocked: appInfo.uid=" + r.appInfo.uid
-                    + " app=" + app);
+                        + " app=" + app);
             if (app != null && app.thread != null) {
                 try {
                     app.addPackage(r.appInfo.packageName, r.appInfo.versionCode, mAm.mProcessStats);
@@ -1499,7 +1499,7 @@ public final class ActiveServices {
     }
 
     private final void realStartServiceLocked(ServiceRecord r,
-                                              ProcessRecord app, boolean execInFg) throws RemoteException {
+            ProcessRecord app, boolean execInFg) throws RemoteException {
         if (app.thread == null) {
             throw new RemoteException();
         }
@@ -1588,7 +1588,7 @@ public final class ActiveServices {
     }
 
     private final void sendServiceArgsLocked(ServiceRecord r, boolean execInFg,
-                                             boolean oomAdjusted) throws TransactionTooLargeException {
+            boolean oomAdjusted) throws TransactionTooLargeException {
         final int N = r.pendingStarts.size();
         if (N == 0) {
             return;
@@ -1671,7 +1671,7 @@ public final class ActiveServices {
     }
 
     private final void bringDownServiceIfNeededLocked(ServiceRecord r, boolean knowConn,
-                                                      boolean hasConn) {
+            boolean hasConn) {
         //Slog.i(TAG, "Bring down service:");
         //r.dump("  ");
 
@@ -1704,8 +1704,8 @@ public final class ActiveServices {
                     cr.conn.connected(r.name, null);
                 } catch (Exception e) {
                     Slog.w(TAG, "Failure disconnecting service " + r.name +
-                            " to connection " + c.get(i).conn.asBinder() +
-                            " (in " + c.get(i).binding.client.processName + ")", e);
+                          " to connection " + c.get(i).conn.asBinder() +
+                          " (in " + c.get(i).binding.client.processName + ")", e);
                 }
             }
         }
@@ -1782,11 +1782,11 @@ public final class ActiveServices {
                 }
             } else {
                 if (DEBUG_SERVICE) Slog.v(
-                        TAG_SERVICE, "Removed service that has no process: " + r);
+                    TAG_SERVICE, "Removed service that has no process: " + r);
             }
         } else {
             if (DEBUG_SERVICE) Slog.v(
-                    TAG_SERVICE, "Removed service that is not running: " + r);
+                TAG_SERVICE, "Removed service that is not running: " + r);
         }
 
         if (r.bindings.size() > 0) {
@@ -1794,7 +1794,7 @@ public final class ActiveServices {
         }
 
         if (r.restarter instanceof ServiceRestarter) {
-            ((ServiceRestarter)r.restarter).setService(null);
+           ((ServiceRestarter)r.restarter).setService(null);
         }
 
         int memFactor = mAm.mProcessStats.getMemFactorLocked();
@@ -1812,7 +1812,7 @@ public final class ActiveServices {
     }
 
     void removeConnectionLocked(
-            ConnectionRecord c, ProcessRecord skipApp, ActivityRecord skipAct) {
+        ConnectionRecord c, ProcessRecord skipApp, ActivityRecord skipAct) {
         IBinder binder = c.conn.asBinder();
         AppBindRecord b = c.binding;
         ServiceRecord s = b.service;
@@ -1980,7 +1980,7 @@ public final class ActiveServices {
     }
 
     private void serviceDoneExecutingLocked(ServiceRecord r, boolean inDestroying,
-                                            boolean finishing) {
+            boolean finishing) {
         if (DEBUG_SERVICE) Slog.v(TAG_SERVICE, "<<< DONE EXECUTING " + r
                 + ": nesting=" + r.executeNesting
                 + ", inDestroying=" + inDestroying + ", app=" + r.app);
@@ -2101,15 +2101,15 @@ public final class ActiveServices {
     }
 
     private boolean collectPackageServicesLocked(String packageName, Set<String> filterByClasses,
-                                                 boolean evenPersistent, boolean doit, boolean killProcess,
-                                                 ArrayMap<ComponentName, ServiceRecord> services) {
+            boolean evenPersistent, boolean doit, boolean killProcess,
+            ArrayMap<ComponentName, ServiceRecord> services) {
         boolean didSomething = false;
         for (int i = services.size() - 1; i >= 0; i--) {
             ServiceRecord service = services.valueAt(i);
             final boolean sameComponent = packageName == null
                     || (service.packageName.equals(packageName)
-                    && (filterByClasses == null
-                    || filterByClasses.contains(service.name.getClassName())));
+                        && (filterByClasses == null
+                            || filterByClasses.contains(service.name.getClassName())));
             if (sameComponent
                     && (service.app == null || evenPersistent || !service.app.persistent)) {
                 if (!doit) {
@@ -2135,7 +2135,7 @@ public final class ActiveServices {
     }
 
     boolean bringDownDisabledPackageServicesLocked(String packageName, Set<String> filterByClasses,
-                                                   int userId, boolean evenPersistent, boolean killProcess, boolean doit) {
+            int userId, boolean evenPersistent, boolean killProcess, boolean doit) {
         boolean didSomething = false;
 
         if (mTmpCollectionResults != null) {
@@ -2221,8 +2221,8 @@ public final class ActiveServices {
                                 } catch (Exception e) {
                                     // todo: this should be asynchronous!
                                     Slog.w(TAG, "Exception thrown disconnected servce "
-                                            + r.shortName
-                                            + " from app " + app.processName, e);
+                                          + r.shortName
+                                          + " from app " + app.processName, e);
                                 }
                             }
                         }
@@ -2394,7 +2394,7 @@ public final class ActiveServices {
 
     ActivityManager.RunningServiceInfo makeRunningServiceInfoLocked(ServiceRecord r) {
         ActivityManager.RunningServiceInfo info =
-                new ActivityManager.RunningServiceInfo();
+            new ActivityManager.RunningServiceInfo();
         info.service = r.name;
         if (r.app != null) {
             info.pid = r.app.pid;
@@ -2435,7 +2435,7 @@ public final class ActiveServices {
     }
 
     List<ActivityManager.RunningServiceInfo> getRunningServiceInfoLocked(int maxNum,
-                                                                         int flags) {
+            int flags) {
         ArrayList<ActivityManager.RunningServiceInfo> res
                 = new ArrayList<ActivityManager.RunningServiceInfo>();
 
@@ -2565,7 +2565,7 @@ public final class ActiveServices {
      * Prints a list of ServiceRecords (dumpsys activity services)
      */
     void dumpServicesLocked(FileDescriptor fd, PrintWriter pw, String[] args,
-                            int opti, boolean dumpAll, boolean dumpClient, String dumpPackage) {
+            int opti, boolean dumpAll, boolean dumpClient, String dumpPackage) {
         boolean needSep = false;
         boolean printedAnything = false;
 
@@ -2812,7 +2812,7 @@ public final class ActiveServices {
      *    dump all services whose component contains the first arg as a substring
      */
     protected boolean dumpService(FileDescriptor fd, PrintWriter pw, String name, String[] args,
-                                  int opti, boolean dumpAll) {
+            int opti, boolean dumpAll) {
         ArrayList<ServiceRecord> services = new ArrayList<ServiceRecord>();
 
         synchronized (mAm) {
@@ -2887,15 +2887,15 @@ public final class ActiveServices {
      * there is a thread associated with the service.
      */
     private void dumpService(String prefix, FileDescriptor fd, PrintWriter pw,
-                             final ServiceRecord r, String[] args, boolean dumpAll) {
+            final ServiceRecord r, String[] args, boolean dumpAll) {
         String innerPrefix = prefix + "  ";
         synchronized (mAm) {
             pw.print(prefix); pw.print("SERVICE ");
-            pw.print(r.shortName); pw.print(" ");
-            pw.print(Integer.toHexString(System.identityHashCode(r)));
-            pw.print(" pid=");
-            if (r.app != null) pw.println(r.app.pid);
-            else pw.println("(not running)");
+                    pw.print(r.shortName); pw.print(" ");
+                    pw.print(Integer.toHexString(System.identityHashCode(r)));
+                    pw.print(" pid=");
+                    if (r.app != null) pw.println(r.app.pid);
+                    else pw.println("(not running)");
             if (dumpAll) {
                 r.dump(pw, innerPrefix);
             }
