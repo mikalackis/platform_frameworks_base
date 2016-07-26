@@ -25,17 +25,18 @@ import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
-import android.os.Bundle;
 import android.os.Environment;
 import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.util.ArrayMap;
 import android.util.Log;
 import android.util.Slog;
 import android.util.Xml;
+
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.XmlUtils;
 import com.android.server.EventLogTags;
@@ -135,6 +136,7 @@ public class IntentFirewall {
         boolean block = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
         if(!block && ActivityManagerNative.isSystemReady()){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
             Intent blockIntent = new Intent("ariel.intent.action.APPLICATION_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -639,6 +641,8 @@ public class IntentFirewall {
                                      int owningUid, boolean exported);
         Object getAMSLock();
         Context getContext();
+
+        void removeTasksByPackageNameLocked(String packageName, int userId);
     }
 
     /**

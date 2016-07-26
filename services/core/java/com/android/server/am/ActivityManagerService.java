@@ -7086,6 +7086,11 @@ public final class ActivityManagerService extends ActivityManagerNative
         public Context getContext() {
             return mContext;
         }
+
+        @Override
+        public void removeTasksByPackageNameLocked(String packageName, int userId) {
+            ActivityManagerService.this.removeTasksByPackageNameLocked(packageName, userId);
+        }
     }
 
     /**
