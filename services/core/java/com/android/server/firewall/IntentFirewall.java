@@ -30,6 +30,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.RemoteException;
 import android.util.ArrayMap;
+import android.util.Log;
 import android.util.Slog;
 import android.util.Xml;
 import com.android.internal.util.ArrayUtils;
@@ -47,6 +48,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+
+import ariel.platform.Manifest;
 
 public class IntentFirewall {
     static final String TAG = "IntentFirewall";
@@ -126,8 +129,14 @@ public class IntentFirewall {
      */
     public boolean checkStartActivity(Intent intent, int callerUid, int callerPid,
             String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
+        boolean block = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
+        if(!block && ActivityManagerNative.isSystemReady()){
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+            Intent blockIntent = new Intent("ariel.intent.action.APPLICATION_BLOCKED");
+            mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
+        }
+        return block;
     }
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
@@ -138,8 +147,28 @@ public class IntentFirewall {
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
             String resolvedType, int receivingUid) {
-        return checkIntent(mBroadcastResolver, intent.getComponent(), TYPE_BROADCAST, intent,
+        boolean block = checkIntent(mBroadcastResolver, intent.getComponent(), TYPE_BROADCAST, intent,
                 callerUid, callerPid, resolvedType, receivingUid);
+        Log.i(TAG, "Broadcast check for component: "+intent.getAction()+" with status: "+block);
+//        if(intent!=null && intent.getAction()!=null) {
+//            if (intent.getAction().equals("android.net.conn.CONNECTIVITY_CHANGE")) {
+//                Bundle bundle = intent.getExtras();
+//                if(bundle != null) {
+//                    for (String key : bundle.keySet()) {
+//                        Object value = bundle.get(key);
+//                        if(value!=null) {
+//                            Log.i(TAG, String.format("%s %s (%s)", key,
+//                                    value.toString(), value.getClass().getName()));
+//                        }
+//                    }
+//                }
+//            }
+//        }
+        if(!block && ActivityManagerNative.isSystemReady()){
+            Intent blockIntent = new Intent("ariel.intent.action.BROADCAST_BLOCKED");
+            mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
+        }
+        return block;
     }
 
     public boolean checkIntent(FirewallIntentResolver resolver, ComponentName resolvedComponent,
@@ -524,16 +553,42 @@ public class IntentFirewall {
             if (rules != null) {
                 candidateRules.addAll(Arrays.asList(rules));
             }
+            else{
+                // check component package rules
+                if(componentName != null) {
+                    String packageName = componentName.getPackageName();
+                    if(packageName != null) {
+                        rules = mRulesByComponentPackage.get(packageName);
+                        if (rules != null) {
+                            candidateRules.addAll(Arrays.asList(rules));
+                        }
+                    }
+                }
+            }
         }
 
         public void addComponentFilter(ComponentName componentName, Rule rule) {
-            Rule[] rules = mRulesByComponent.get(componentName);
+            Rule[] rules = null;
+            // this checks if component class is marked with '*'
+            // If that is the case then we match by package name
+            if(componentName != null) {
+                if(componentName.getClassName() != null && componentName.getClassName().equals("*")){
+                    rules = mRulesByComponentPackage.get(componentName.getPackageName());
+                    rules = ArrayUtils.appendElement(Rule.class, rules, rule);
+                    mRulesByComponentPackage.put(componentName.getPackageName(), rules);
+                    return;
+                }
+            }
+            rules = mRulesByComponent.get(componentName);
             rules = ArrayUtils.appendElement(Rule.class, rules, rule);
             mRulesByComponent.put(componentName, rules);
         }
 
         private final ArrayMap<ComponentName, Rule[]> mRulesByComponent =
                 new ArrayMap<ComponentName, Rule[]>(0);
+
+        private final ArrayMap<String, Rule[]> mRulesByComponentPackage =
+                new ArrayMap<String, Rule[]>(0);
     }
 
     final FirewallHandler mHandler;
@@ -581,6 +636,9 @@ public class IntentFirewall {
         int checkComponentPermission(String permission, int pid, int uid,
                 int owningUid, boolean exported);
         Object getAMSLock();
+        Context getContext();
+
+        void removeTasksByPackageNameLocked(String packageName, int userId);
     }
 
     /**
