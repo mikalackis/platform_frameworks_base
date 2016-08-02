@@ -159,6 +159,7 @@ import java.io.PrintWriter;
 import java.util.HashSet;
 import java.util.List;
 
+import ariel.providers.ArielSettings;
 /**
  * WindowManagerPolicy implementation for the Android phone UI.  This
  * introduces a new method suffix, Lp, for an internal lock of the
@@ -1235,11 +1236,21 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         case LONG_PRESS_POWER_NOTHING:
             break;
         case LONG_PRESS_POWER_GLOBAL_ACTIONS:
-            mPowerKeyHandled = true;
-            if (!performHapticFeedbackLw(null, HapticFeedbackConstants.LONG_PRESS, false)) {
-                performAuditoryFeedbackForAccessibilityIfNeed();
+            ContentResolver resolver = mContext.getContentResolver();
+            int arielSystemStatus = ArielSettings.Secure.getInt(resolver,
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS, ArielSettings.Secure.ARIEL_SYSTEM_STATUS_NORMAL);
+            Log.i(TAG, "Ariel system status: "+arielSystemStatus);
+            if (arielSystemStatus != ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC
+                    && arielSystemStatus != ArielSettings.Secure.ARIEL_SYSTEM_STATUS_THEFT){
+                mPowerKeyHandled = true;
+                if (!performHapticFeedbackLw(null, HapticFeedbackConstants.LONG_PRESS, false)) {
+                    performAuditoryFeedbackForAccessibilityIfNeed();
+                }
+                showGlobalActionsInternal();
             }
-            showGlobalActionsInternal();
+            else{
+                Log.i(TAG, "Power button disabled!!!");
+            }
             break;
         case LONG_PRESS_POWER_SHUT_OFF:
         case LONG_PRESS_POWER_SHUT_OFF_NO_CONFIRM:

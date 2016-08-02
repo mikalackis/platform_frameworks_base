@@ -34,13 +34,14 @@ import android.os.PowerManager.WakeLock;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.provider.Settings;
-import android.util.MutableBoolean;
 import android.util.Slog;
 import android.view.KeyEvent;
+import android.util.Log;
 
 import com.android.internal.logging.MetricsLogger;
-import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.server.statusbar.StatusBarManagerInternal;
+
+import ariel.providers.ArielSettings;
 
 /**
  * The service that listens for gestures detected in sensor firmware and starts the intent
@@ -58,6 +59,7 @@ public class GestureLauncherService extends SystemService {
      * as a camera launch.
      */
     private static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 300;
+    private static final long CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS = 120;
 
     /** The listener that receives the gesture event. */
     private final GestureEventListener mGestureListener = new GestureEventListener();
@@ -251,31 +253,58 @@ public class GestureLauncherService extends SystemService {
         return isCameraLaunchEnabled(resources) || isCameraDoubleTapPowerEnabled(resources);
     }
 
-    public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive,
-            MutableBoolean outLaunched) {
-        boolean launched = false;
-        boolean intercept = false;
-        long doubleTapInterval;
+    boolean launched = false;
+    boolean intercept = false;
+    int numberOfTaps;
+    Handler mHandler = new Handler();
+    long doubleTapInterval;
+
+    public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive) {
+
         synchronized (this) {
             doubleTapInterval = event.getEventTime() - mLastPowerDown;
             if (mCameraDoubleTapPowerEnabled
-                    && doubleTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS) {
+                    && doubleTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS
+                    && doubleTapInterval > CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS) {
                 launched = true;
                 intercept = interactive;
+                numberOfTaps += 1;
+            }
+            else{
+                numberOfTaps = 1;
+                launched = false;
+                intercept = false;
+                mHandler.removeCallbacksAndMessages(null);
             }
             mLastPowerDown = event.getEventTime();
         }
-        if (launched) {
-            Slog.i(TAG, "Power button double tap gesture detected, launching camera. Interval="
-                    + doubleTapInterval + "ms");
-            launched = handleCameraLaunchGesture(false /* useWakelock */,
-                    StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
-            if (launched) {
-                MetricsLogger.action(mContext, MetricsEvent.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
-                        (int) doubleTapInterval);
-            }
+        if(numberOfTaps == 3){
+            Log.i(TAG, "DETECTED 3 TAPS");
+            mHandler.removeCallbacksAndMessages(null);
+            ArielSettings.Secure.putInt(mContext.getContentResolver(),
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC);
+            numberOfTaps = 0;
         }
-        MetricsLogger.histogram(mContext, "power_double_tap_interval", (int) doubleTapInterval);
+        else if(numberOfTaps == 2){
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (launched) {
+                        Slog.i(TAG, "Power button double tap gesture detected, launching camera. Interval="
+                                + doubleTapInterval + "ms");
+                        launched = handleCameraLaunchGesture(false /* useWakelock */,
+                                StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
+                        if (launched) {
+                            MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
+                                    (int) doubleTapInterval);
+                        }
+                    }
+                    MetricsLogger.histogram(mContext, "power_double_tap_interval", (int) doubleTapInterval);
+                    numberOfTaps = 0;
+                }
+            }, 300);
+        }
         outLaunched.value = launched;
         return intercept && launched;
     }
@@ -343,7 +372,7 @@ public class GestureLauncherService extends SystemService {
                 }
                 if (handleCameraLaunchGesture(true /* useWakelock */,
                         StatusBarManager.CAMERA_LAUNCH_SOURCE_WIGGLE)) {
-                    MetricsLogger.action(mContext, MetricsEvent.ACTION_WIGGLE_CAMERA_GESTURE);
+                    MetricsLogger.action(mContext, MetricsLogger.ACTION_WIGGLE_CAMERA_GESTURE);
                     trackCameraLaunchEvent(event);
                 }
                 return;
