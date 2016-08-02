@@ -1117,14 +1117,19 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             break;
         case LONG_PRESS_POWER_GLOBAL_ACTIONS:
             ContentResolver resolver = mContext.getContentResolver();
-            int arielSystemStatus = Settings.Secure.getInt(resolver,
-                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS, 0);
-            if (!isKeyguardShowingAndNotOccluded() && (arielSystemStatus == 0 || arielSystemStatus == 1)){
+            int arielSystemStatus = ArielSettings.Secure.getInt(resolver,
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS, ArielSettings.Secure.ARIEL_SYSTEM_STATUS_NORMAL);
+            Log.i(TAG, "Ariel system status: "+arielSystemStatus);
+            if (arielSystemStatus != ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC
+                    && arielSystemStatus != ArielSettings.Secure.ARIEL_SYSTEM_STATUS_THEFT){
                 mPowerKeyHandled = true;
                 if (!performHapticFeedbackLw(null, HapticFeedbackConstants.LONG_PRESS, false)) {
                     performAuditoryFeedbackForAccessibilityIfNeed();
                 }
                 showGlobalActionsInternal();
+            }
+            else{
+                Log.i(TAG, "Power button disabled!!!");
             }
             break;
         case LONG_PRESS_POWER_SHUT_OFF:

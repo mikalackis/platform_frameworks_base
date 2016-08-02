@@ -281,7 +281,9 @@ public class GestureLauncherService extends SystemService {
         if(numberOfTaps == 3){
             Log.i(TAG, "DETECTED 3 TAPS");
             mHandler.removeCallbacksAndMessages(null);
-            ArielSettings.Secure.putInt(mContext.getContentResolver(), ArielSettings.Secure.ARIEL_SYSTEM_STATUS, 101);
+            ArielSettings.Secure.putInt(mContext.getContentResolver(),
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC);
             numberOfTaps = 0;
         }
         else if(numberOfTaps == 2){
