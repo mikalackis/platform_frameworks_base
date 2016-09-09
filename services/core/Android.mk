@@ -17,7 +17,8 @@ LOCAL_AIDL_INCLUDES += \
     system/netd/server/binder
 
 LOCAL_JAVA_LIBRARIES := services.net telephony-common
-LOCAL_STATIC_JAVA_LIBRARIES := tzdata_update
+LOCAL_STATIC_JAVA_LIBRARIES := tzdata_update \
+                               com.ariel.platform.internal
 
 ifneq ($(INCREMENTAL_BUILDS),)
     LOCAL_PROGUARD_ENABLED := disabled
