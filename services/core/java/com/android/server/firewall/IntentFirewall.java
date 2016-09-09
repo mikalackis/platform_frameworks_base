@@ -50,6 +50,9 @@ import java.util.HashMap;
 import java.util.List;
 
 import ariel.platform.Manifest;
+import android.app.ActivityManagerNative;
+import android.os.UserHandle;
+import android.content.Context;
 
 public class IntentFirewall {
     static final String TAG = "IntentFirewall";

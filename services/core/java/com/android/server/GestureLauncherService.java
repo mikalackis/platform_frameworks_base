@@ -34,11 +34,13 @@ import android.os.PowerManager.WakeLock;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.provider.Settings;
+import android.util.MutableBoolean;
 import android.util.Slog;
 import android.view.KeyEvent;
 import android.util.Log;
 
 import com.android.internal.logging.MetricsLogger;
+import com.android.internal.logging.MetricsProto.MetricsEvent;
 import com.android.server.statusbar.StatusBarManagerInternal;
 
 import ariel.providers.ArielSettings;
@@ -259,7 +261,8 @@ public class GestureLauncherService extends SystemService {
     Handler mHandler = new Handler();
     long doubleTapInterval;
 
-    public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive) {
+    public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive,
+            MutableBoolean outLaunched) {
 
         synchronized (this) {
             doubleTapInterval = event.getEventTime() - mLastPowerDown;
@@ -296,7 +299,7 @@ public class GestureLauncherService extends SystemService {
                         launched = handleCameraLaunchGesture(false /* useWakelock */,
                                 StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
                         if (launched) {
-                            MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
+                            MetricsLogger.action(mContext, MetricsEvent.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
                                     (int) doubleTapInterval);
                         }
                     }
@@ -372,7 +375,7 @@ public class GestureLauncherService extends SystemService {
                 }
                 if (handleCameraLaunchGesture(true /* useWakelock */,
                         StatusBarManager.CAMERA_LAUNCH_SOURCE_WIGGLE)) {
-                    MetricsLogger.action(mContext, MetricsLogger.ACTION_WIGGLE_CAMERA_GESTURE);
+                    MetricsLogger.action(mContext, MetricsEvent.ACTION_WIGGLE_CAMERA_GESTURE);
                     trackCameraLaunchEvent(event);
                 }
                 return;
