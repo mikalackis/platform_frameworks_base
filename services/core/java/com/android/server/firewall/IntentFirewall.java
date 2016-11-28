@@ -307,6 +307,8 @@ public class IntentFirewall {
             for (int i=0; i<files.length; i++) {
                 File file = files[i];
 
+                Slog.i(TAG, "Reading file: "+file.getName());
+
                 if (file.getName().endsWith(".xml")) {
                     readRules(file, resolvers);
                 }
@@ -356,6 +358,9 @@ public class IntentFirewall {
                 int ruleType = -1;
 
                 String tagName = parser.getName();
+
+                Slog.i(TAG, "Reading tag: "+tagName);
+
                 if (tagName.equals(TAG_ACTIVITY)) {
                     ruleType = TYPE_ACTIVITY;
                 } else if (tagName.equals(TAG_BROADCAST)) {
@@ -363,6 +368,8 @@ public class IntentFirewall {
                 } else if (tagName.equals(TAG_SERVICE)) {
                     ruleType = TYPE_SERVICE;
                 }
+
+                Slog.i(TAG, "Rule type: "+ruleType);
 
                 if (ruleType != -1) {
                     Rule rule = new Rule();
@@ -621,6 +628,9 @@ public class IntentFirewall {
         @Override
         public void onEvent(int event, String path) {
             if (path.endsWith(".xml")) {
+
+                Slog.i(TAG, "Detected file: "+path);
+
                 // we wait 250ms before taking any action on an event, in order to dedup multiple
                 // events. E.g. a delete event followed by a create event followed by a subsequent
                 // write+close event
