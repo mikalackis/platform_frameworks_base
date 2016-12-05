@@ -100,6 +100,18 @@ import com.android.server.wm.WindowManagerService;
 
 import dalvik.system.VMRuntime;
 
+/**
+ * ArielOS start
+ */
+import dalvik.system.VMRuntime;
+import dalvik.system.PathClassLoader;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+/**
+ * ArielOS end
+ */
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
@@ -543,6 +555,16 @@ public final class SystemServer {
         boolean disableSamplingProfiler = SystemProperties.getBoolean("config.disable_samplingprof",
                 false);
         boolean isEmulator = SystemProperties.get("ro.kernel.qemu").equals("1");
+
+        /**
+         * ArielOS start
+//         */
+        String externalServer = context.getResources().getString(
+                com.ariel.platform.internal.R.string.config_externalSystemServer);
+        //int something = context.getResources().getInteger(com.ariel.platform.internal.R.string.config_abrakadabra);
+        /**
+         * ArielOS end
+         */
 
         try {
             Slog.i(TAG, "Reading configuration...");
@@ -1176,6 +1198,30 @@ public final class SystemServer {
 
         // MMS service broker
         mmsService = mSystemServiceManager.startService(MmsServiceBroker.class);
+
+        /**
+         * ArielOS start
+         */
+        final Class<?> serverClazz;
+        try {
+            serverClazz = Class.forName(externalServer);
+            final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
+            constructor.setAccessible(true);
+            final Object baseObject = constructor.newInstance(mSystemContext);
+            final Method method = baseObject.getClass().getDeclaredMethod("run");
+            method.setAccessible(true);
+            method.invoke(baseObject);
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            Slog.wtf(TAG, "Unable to start  " + externalServer);
+            Slog.wtf(TAG, e);
+        }
+        /**
+         * ArielOS end
+         */
 
         // It is now time to start up the app processes...
 

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <getopt.h>
 #include <cassert>
+#include <ctype.h>
 
 using namespace android;
 
@@ -355,6 +356,14 @@ int main(int argc, char* const argv[])
                 break;
             case 'x':
                 bundle.setExtending(true);
+                argc--;
+                argv++;
+                if (!argc || !isdigit(argv[0][0])) {
+                    argc++;
+                    argv--;
+                } else {
+                    bundle.setExtendedPackageId(atoi(argv[0]));
+                }
                 break;
             case 'z':
                 bundle.setRequireLocalization(true);
