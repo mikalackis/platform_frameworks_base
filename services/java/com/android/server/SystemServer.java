@@ -1202,23 +1202,23 @@ public final class SystemServer {
         /**
          * ArielOS start
          */
-        final Class<?> serverClazz;
-        try {
-            serverClazz = Class.forName(externalServer);
-            final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
-            constructor.setAccessible(true);
-            final Object baseObject = constructor.newInstance(mSystemContext);
-            final Method method = baseObject.getClass().getDeclaredMethod("run");
-            method.setAccessible(true);
-            method.invoke(baseObject);
-        } catch (ClassNotFoundException
-                | IllegalAccessException
-                | InvocationTargetException
-                | InstantiationException
-                | NoSuchMethodException e) {
-            Slog.wtf(TAG, "Unable to start  " + externalServer);
-            Slog.wtf(TAG, e);
-        }
+//        final Class<?> serverClazz;
+//        try {
+//            serverClazz = Class.forName(externalServer);
+//            final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
+//            constructor.setAccessible(true);
+//            final Object baseObject = constructor.newInstance(mSystemContext);
+//            final Method method = baseObject.getClass().getDeclaredMethod("run");
+//            method.setAccessible(true);
+//            method.invoke(baseObject);
+//        } catch (ClassNotFoundException
+//                | IllegalAccessException
+//                | InvocationTargetException
+//                | InstantiationException
+//                | NoSuchMethodException e) {
+//            Slog.wtf(TAG, "Unable to start  " + externalServer);
+//            Slog.wtf(TAG, e);
+//        }
         /**
          * ArielOS end
          */
