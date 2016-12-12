@@ -47,7 +47,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import ariel.platform.Manifest;
 import android.app.ActivityManagerNative;
@@ -144,29 +146,21 @@ public class IntentFirewall {
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
             int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
-        return checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
+        boolean block = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
+        if(!block && ActivityManagerNative.isSystemReady()){
+            Log.i(TAG+"SERVICE", "BLOCKING SERVICE: "+intent.getComponent().getPackageName()+"."+intent.getComponent().getClassName());
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+            Intent blockIntent = new Intent("ariel.intent.action.SERVICE_BLOCKED");
+            mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
+        }
+        return block;
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
             String resolvedType, int receivingUid) {
         boolean block = checkIntent(mBroadcastResolver, intent.getComponent(), TYPE_BROADCAST, intent,
                 callerUid, callerPid, resolvedType, receivingUid);
-        Log.i(TAG, "Broadcast check for component: "+intent.getAction()+" with status: "+block);
-//        if(intent!=null && intent.getAction()!=null) {
-//            if (intent.getAction().equals("android.net.conn.CONNECTIVITY_CHANGE")) {
-//                Bundle bundle = intent.getExtras();
-//                if(bundle != null) {
-//                    for (String key : bundle.keySet()) {
-//                        Object value = bundle.get(key);
-//                        if(value!=null) {
-//                            Log.i(TAG, String.format("%s %s (%s)", key,
-//                                    value.toString(), value.getClass().getName()));
-//                        }
-//                    }
-//                }
-//            }
-//        }
         if(!block && ActivityManagerNative.isSystemReady()){
             Intent blockIntent = new Intent("ariel.intent.action.BROADCAST_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
@@ -187,7 +181,12 @@ public class IntentFirewall {
         if (candidateRules == null) {
             candidateRules = new ArrayList<Rule>();
         }
+        // find component rules
         resolver.queryByComponent(resolvedComponent, candidateRules);
+        // find package rules
+        if(resolvedComponent != null) {
+            resolver.queryByPackage(resolvedComponent.getPackageName(), candidateRules);
+        }
 
         // For the second pass, try to match the potentially more specific conditions in each
         // rule against the intent
@@ -416,6 +415,9 @@ public class IntentFirewall {
                 for (int i=0; i<rule.getComponentFilterCount(); i++) {
                     resolver.addComponentFilter(rule.getComponentFilter(i), rule);
                 }
+                for (int i=0; i<rule.getPackageFilterCount(); i++) {
+                    resolver.addPackageFilter(rule.getPackageFilter(i), rule);
+                }
             }
         }
     }
@@ -452,6 +454,7 @@ public class IntentFirewall {
     private static class Rule extends AndFilter {
         private static final String TAG_INTENT_FILTER = "intent-filter";
         private static final String TAG_COMPONENT_FILTER = "component-filter";
+        private static final String TAG_PACKAGE_FILTER = "package-filter";
         private static final String ATTR_NAME = "name";
 
         private static final String ATTR_BLOCK = "block";
@@ -460,6 +463,7 @@ public class IntentFirewall {
         private final ArrayList<FirewallIntentFilter> mIntentFilters =
                 new ArrayList<FirewallIntentFilter>(1);
         private final ArrayList<ComponentName> mComponentFilters = new ArrayList<ComponentName>(0);
+        private final ArrayList<String> mPackageFilters = new ArrayList<>();
         private boolean block;
         private boolean log;
 
@@ -491,8 +495,21 @@ public class IntentFirewall {
                 if (componentName == null) {
                     throw new XmlPullParserException("Invalid component name: " + componentStr);
                 }
+                else{
+                    Log.i(TAG, "Component package: "+componentName.getPackageName()+", class name: "+componentName.getClassName());
+                }
 
                 mComponentFilters.add(componentName);
+            } else if (currentTag.equals(TAG_PACKAGE_FILTER)) {
+                String packageString = parser.getAttributeValue(null, ATTR_NAME);
+                if (packageString == null) {
+                    throw new XmlPullParserException("Package name must be specified.",
+                            parser, null);
+                }
+
+                Log.i(TAG, "Package name: "+packageString);
+
+                mPackageFilters.add(packageString);
             } else {
                 super.readChild(parser);
             }
@@ -513,6 +530,15 @@ public class IntentFirewall {
         public ComponentName getComponentFilter(int index) {
             return mComponentFilters.get(index);
         }
+
+        public int getPackageFilterCount() {
+            return mPackageFilters.size();
+        }
+
+        public String getPackageFilter(int index) {
+            return mPackageFilters.get(index);
+        }
+
         public boolean getBlock() {
             return block;
         }
@@ -563,41 +589,31 @@ public class IntentFirewall {
             if (rules != null) {
                 candidateRules.addAll(Arrays.asList(rules));
             }
-            else{
-                // check component package rules
-                if(componentName != null) {
-                    String packageName = componentName.getPackageName();
-                    if(packageName != null) {
-                        rules = mRulesByComponentPackage.get(packageName);
-                        if (rules != null) {
-                            candidateRules.addAll(Arrays.asList(rules));
-                        }
-                    }
-                }
-            }
         }
 
         public void addComponentFilter(ComponentName componentName, Rule rule) {
-            Rule[] rules = null;
-            // this checks if component class is marked with '*'
-            // If that is the case then we match by package name
-            if(componentName != null) {
-                if(componentName.getClassName() != null && componentName.getClassName().equals("*")){
-                    rules = mRulesByComponentPackage.get(componentName.getPackageName());
-                    rules = ArrayUtils.appendElement(Rule.class, rules, rule);
-                    mRulesByComponentPackage.put(componentName.getPackageName(), rules);
-                    return;
-                }
-            }
-            rules = mRulesByComponent.get(componentName);
+            Rule[] rules = mRulesByComponent.get(componentName);
             rules = ArrayUtils.appendElement(Rule.class, rules, rule);
             mRulesByComponent.put(componentName, rules);
+        }
+
+        public void addPackageFilter(String packageName, Rule rule) {
+            Rule[] rules = mRulesByPackage.get(packageName);
+            rules = ArrayUtils.appendElement(Rule.class, rules, rule);
+            mRulesByPackage.put(packageName, rules);
+        }
+
+        public void queryByPackage(String packageName, List<Rule> candidateRules) {
+            Rule[] rules = mRulesByPackage.get(packageName);
+            if (rules != null) {
+                candidateRules.addAll(Arrays.asList(rules));
+            }
         }
 
         private final ArrayMap<ComponentName, Rule[]> mRulesByComponent =
                 new ArrayMap<ComponentName, Rule[]>(0);
 
-        private final ArrayMap<String, Rule[]> mRulesByComponentPackage =
+        private final ArrayMap<String, Rule[]> mRulesByPackage =
                 new ArrayMap<String, Rule[]>(0);
     }
 
