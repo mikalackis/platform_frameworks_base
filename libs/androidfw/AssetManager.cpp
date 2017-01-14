@@ -326,10 +326,17 @@ bool AssetManager::addDefaultAssets()
     String8 path(root);
     path.appendPath(kSystemAssets);
 
-    String8 pathAriel(root);
-    pathAriel.appendPath(kArielSDKAssets);
+    bool ret = addAssetPath(path, NULL, false /* appAsLib */, true /* isSystemAsset */);
+    if (ret) {
+         String8 pathAriel(root);
+         pathAriel.appendPath(kArielSDKAssets);
 
-    return addAssetPath(path, NULL, false /* appAsLib */, true /* isSystemAsset */);
+         if (!addAssetPath(pathAriel, NULL, false /* appAsLib */, false /* isSystemAsset */)) {
+             ALOGE("Failed to load ArielSDK resources!");
+         }
+    }
+    return ret;
+
 }
 
 int32_t AssetManager::nextAssetPath(const int32_t cookie) const

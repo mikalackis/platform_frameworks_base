@@ -106,6 +106,10 @@ import com.android.server.wm.WindowManagerService;
 
 import dalvik.system.VMRuntime;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
@@ -554,8 +558,14 @@ public final class SystemServer {
                 false);
         boolean isEmulator = SystemProperties.get("ro.kernel.qemu").equals("1");
 
-        String externalServer = context.getResources().getString(
+        String externalServer = "";
+        try{
+            externalServer = context.getResources().getString(
                 com.ariel.platform.internal.R.string.config_externalSystemServer);
+        }
+        catch(Exception e){
+            Slog.e(TAG, "Error loading external server", e);
+        }
 
         try {
             Slog.i(TAG, "Reading configuration...");
@@ -1199,14 +1209,16 @@ public final class SystemServer {
 
         final Class<?> serverClazz;
         try {
-            Slog.i(TAG, "Setting up external system server: "+externalServer);
-            serverClazz = Class.forName(externalServer);
-            final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
-            constructor.setAccessible(true);
-            final Object baseObject = constructor.newInstance(mSystemContext);
-            final Method method = baseObject.getClass().getDeclaredMethod("run");
-            method.setAccessible(true);
-            method.invoke(baseObject);
+            if(externalServer.length()>0){
+                Slog.i(TAG, "Setting up external system server: "+externalServer);
+                serverClazz = Class.forName(externalServer);
+                final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
+                constructor.setAccessible(true);
+                final Object baseObject = constructor.newInstance(mSystemContext);
+                final Method method = baseObject.getClass().getDeclaredMethod("run");
+                method.setAccessible(true);
+                method.invoke(baseObject);
+            }
         } catch (ClassNotFoundException
                 | IllegalAccessException
                 | InvocationTargetException
