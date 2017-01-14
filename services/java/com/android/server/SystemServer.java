@@ -558,14 +558,14 @@ public final class SystemServer {
                 false);
         boolean isEmulator = SystemProperties.get("ro.kernel.qemu").equals("1");
 
+        String externalServer = "";
         try{
-            String externalServer = context.getResources().getString(
+            externalServer = context.getResources().getString(
                 com.ariel.platform.internal.R.string.config_externalSystemServer);
         }
         catch(Exception e){
             Slog.e(TAG, "Error loading external server", e);
         }
-
 
         try {
             Slog.i(TAG, "Reading configuration...");
@@ -1207,24 +1207,26 @@ public final class SystemServer {
         // MMS service broker
         mmsService = mSystemServiceManager.startService(MmsServiceBroker.class);
 
-//        final Class<?> serverClazz;
-//        try {
-//            Slog.i(TAG, "Setting up external system server: "+externalServer);
-//            serverClazz = Class.forName(externalServer);
-//            final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
-//            constructor.setAccessible(true);
-//            final Object baseObject = constructor.newInstance(mSystemContext);
-//            final Method method = baseObject.getClass().getDeclaredMethod("run");
-//            method.setAccessible(true);
-//            method.invoke(baseObject);
-//        } catch (ClassNotFoundException
-//                | IllegalAccessException
-//                | InvocationTargetException
-//                | InstantiationException
-//                | NoSuchMethodException e) {
-//            Slog.wtf(TAG, "Unable to start  " + externalServer);
-//            Slog.wtf(TAG, e);
-//        }
+        final Class<?> serverClazz;
+        try {
+            if(externalServer.length()>0){
+                Slog.i(TAG, "Setting up external system server: "+externalServer);
+                serverClazz = Class.forName(externalServer);
+                final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
+                constructor.setAccessible(true);
+                final Object baseObject = constructor.newInstance(mSystemContext);
+                final Method method = baseObject.getClass().getDeclaredMethod("run");
+                method.setAccessible(true);
+                method.invoke(baseObject);
+            }
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            Slog.wtf(TAG, "Unable to start  " + externalServer);
+            Slog.wtf(TAG, e);
+        }
 
         if (Settings.Global.getInt(mContentResolver, Settings.Global.DEVICE_PROVISIONED, 0) == 0 ||
                 UserManager.isDeviceInDemoMode(mSystemContext)) {
