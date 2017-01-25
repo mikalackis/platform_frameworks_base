@@ -24,9 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <algorithm>
 #include <limits>
-#include <memory>
 #include <type_traits>
 
 #include <androidfw/ByteBucketArray.h>
@@ -49,7 +47,7 @@
 
 namespace android {
 
-#if defined(_WIN32)
+#ifdef HAVE_WINSOCK
 #undef  nhtol
 #undef  htonl
 #define ntohl(x)    ( ((x) << 24) | (((x) >> 24) & 255) | (((x) << 8) & 0xff0000) | (((x) >> 8) & 0xff00) )
@@ -62,7 +60,6 @@ namespace android {
 #define IDMAP_CURRENT_VERSION   0x00000001
 
 #define APP_PACKAGE_ID      0x7f
-#define ARIEL_PACKAGE_ID    0x3f
 #define SYS_PACKAGE_ID      0x01
 
 static const bool kDebugStringPoolNoisy = false;
@@ -563,7 +560,7 @@ status_t ResStringPool::setTo(const void* data, size_t size, bool copyData)
 
         if ((mHeader->flags&ResStringPool_header::UTF8_FLAG &&
                 ((uint8_t*)mStrings)[mStringPoolSize-1] != 0) ||
-                (!(mHeader->flags&ResStringPool_header::UTF8_FLAG) &&
+                (!mHeader->flags&ResStringPool_header::UTF8_FLAG &&
                 ((uint16_t*)mStrings)[mStringPoolSize-1] != 0)) {
             ALOGW("Bad string block: last string is not 0-terminated\n");
             return (mError=BAD_TYPE);
@@ -730,7 +727,7 @@ const char16_t* ResStringPool::stringAt(size_t idx, size_t* u16len) const
                     AutoMutex lock(mDecodeLock);
 
                     if (mCache == NULL) {
-#ifndef __ANDROID__
+#ifndef HAVE_ANDROID_OS
                         if (kDebugStringPoolNoisy) {
                             ALOGI("CREATING STRING CACHE OF %zu bytes",
                                     mHeader->stringCount*sizeof(char16_t**));
@@ -1871,10 +1868,7 @@ void ResTable_config::swapHtoD() {
     }
 
     // The language & region are equal, so compare the scripts and variants.
-    const char emptyScript[sizeof(l.localeScript)] = {'\0', '\0', '\0', '\0'};
-    const char *lScript = l.localeScriptWasComputed ? emptyScript : l.localeScript;
-    const char *rScript = r.localeScriptWasComputed ? emptyScript : r.localeScript;
-    int script = memcmp(lScript, rScript, sizeof(l.localeScript));
+    int script = memcmp(l.localeScript, r.localeScript, sizeof(l.localeScript));
     if (script) {
         return script;
     }
@@ -2018,11 +2012,11 @@ int ResTable_config::isLocaleMoreSpecificThan(const ResTable_config& o) const {
     // scripts since it seems more useful to do so. We will consider
     // "en-US-POSIX" to be more specific than "en-Latn-US".
 
-    const int score = ((localeScript[0] != '\0' && !localeScriptWasComputed) ? 1 : 0) +
-        ((localeVariant[0] != '\0') ? 2 : 0);
+    const int score = ((localeScript[0] != 0) ? 1 : 0) +
+        ((localeVariant[0] != 0) ? 2 : 0);
 
-    const int oScore = (o.localeScript[0] != '\0' && !o.localeScriptWasComputed ? 1 : 0) +
-        ((o.localeVariant[0] != '\0') ? 2 : 0);
+    const int oScore = ((o.localeScript[0] != 0) ? 1 : 0) +
+        ((o.localeVariant[0] != 0) ? 2 : 0);
 
     return score - oScore;
 
@@ -2171,88 +2165,6 @@ bool ResTable_config::isMoreSpecificThan(const ResTable_config& o) const {
     return false;
 }
 
-bool ResTable_config::isLocaleBetterThan(const ResTable_config& o,
-        const ResTable_config* requested) const {
-    if (requested->locale == 0) {
-        // The request doesn't have a locale, so no resource is better
-        // than the other.
-        return false;
-    }
-
-    if (locale == 0 && o.locale == 0) {
-        // The locales parts of both resources are empty, so no one is better
-        // than the other.
-        return false;
-    }
-
-    // Non-matching locales have been filtered out, so both resources
-    // match the requested locale.
-    //
-    // Because of the locale-related checks in match() and the checks, we know
-    // that:
-    // 1) The resource languages are either empty or match the request;
-    // and
-    // 2) If the request's script is known, the resource scripts are either
-    //    unknown or match the request.
-
-    if (language[0] != o.language[0]) {
-        // The languages of the two resources are not the same. We can only
-        // assume that one of the two resources matched the request because one
-        // doesn't have a language and the other has a matching language.
-        //
-        // We consider the one that has the language specified a better match.
-        //
-        // The exception is that we consider no-language resources a better match
-        // for US English and similar locales than locales that are a descendant
-        // of Internatinal English (en-001), since no-language resources are
-        // where the US English resource have traditionally lived for most apps.
-        if (requested->language[0] == 'e' && requested->language[1] == 'n') {
-            if (requested->country[0] == 'U' && requested->country[1] == 'S') {
-                // For US English itself, we consider a no-locale resource a
-                // better match if the other resource has a country other than
-                // US specified.
-                if (language[0] != '\0') {
-                    return country[0] == '\0' || (country[0] == 'U' && country[1] == 'S');
-                } else {
-                    return !(o.country[0] == '\0' || (o.country[0] == 'U' && o.country[1] == 'S'));
-                }
-            } else if (localeDataIsCloseToUsEnglish(requested->country)) {
-                if (language[0] != '\0') {
-                    return localeDataIsCloseToUsEnglish(country);
-                } else {
-                    return !localeDataIsCloseToUsEnglish(o.country);
-                }
-            }
-        }
-        return (language[0] != '\0');
-    }
-
-    // If we are here, both the resources have the same non-empty language as
-    // the request.
-    //
-    // Because the languages are the same, computeScript() always
-    // returns a non-empty script for languages it knows about, and we have passed
-    // the script checks in match(), the scripts are either all unknown or are
-    // all the same. So we can't gain anything by checking the scripts. We need
-    // to check the region and variant.
-
-    // See if any of the regions is better than the other
-    const int region_comparison = localeDataCompareRegions(
-            country, o.country,
-            language, requested->localeScript, requested->country);
-    if (region_comparison != 0) {
-        return (region_comparison > 0);
-    }
-
-    // The regions are the same. Try the variant.
-    if (requested->localeVariant[0] != '\0'
-            && strncmp(localeVariant, requested->localeVariant, sizeof(localeVariant)) == 0) {
-        return (strncmp(o.localeVariant, requested->localeVariant, sizeof(localeVariant)) != 0);
-    }
-
-    return false;
-}
-
 bool ResTable_config::isBetterThan(const ResTable_config& o,
         const ResTable_config* requested) const {
     if (requested) {
@@ -2266,8 +2178,26 @@ bool ResTable_config::isBetterThan(const ResTable_config& o,
             }
         }
 
-        if (isLocaleBetterThan(o, requested)) {
-            return true;
+        if (locale || o.locale) {
+            if ((language[0] != o.language[0]) && requested->language[0]) {
+                return (language[0]);
+            }
+
+            if ((country[0] != o.country[0]) && requested->country[0]) {
+                return (country[0]);
+            }
+        }
+
+        if (localeScript[0] || o.localeScript[0]) {
+            if (localeScript[0] != o.localeScript[0] && requested->localeScript[0]) {
+                return localeScript[0];
+            }
+        }
+
+        if (localeVariant[0] || o.localeVariant[0]) {
+            if (localeVariant[0] != o.localeVariant[0] && requested->localeVariant[0]) {
+                return localeVariant[0];
+            }
         }
 
         if (screenLayout || o.screenLayout) {
@@ -2515,51 +2445,20 @@ bool ResTable_config::match(const ResTable_config& settings) const {
         }
     }
     if (locale != 0) {
-        // Don't consider country and variants when deciding matches.
-        // (Theoretically, the variant can also affect the script. For
-        // example, "ar-alalc97" probably implies the Latin script, but since
-        // CLDR doesn't support getting likely scripts for that, we'll assume
-        // the variant doesn't change the script.)
+        // Don't consider the script & variants when deciding matches.
         //
-        // If two configs differ only in their country and variant,
-        // they can be weeded out in the isMoreSpecificThan test.
-        if (language[0] != settings.language[0] || language[1] != settings.language[1]) {
+        // If we two configs differ only in their script or language, they
+        // can be weeded out in the isMoreSpecificThan test.
+        if (language[0] != 0
+            && (language[0] != settings.language[0]
+                || language[1] != settings.language[1])) {
             return false;
         }
 
-        // For backward compatibility and supporting private-use locales, we
-        // fall back to old behavior if we couldn't determine the script for
-        // either of the desired locale or the provided locale. But if we could determine
-        // the scripts, they should be the same for the locales to match.
-        bool countriesMustMatch = false;
-        char computed_script[4];
-        const char* script;
-        if (settings.localeScript[0] == '\0') { // could not determine the request's script
-            countriesMustMatch = true;
-        } else {
-            if (localeScript[0] == '\0' && !localeScriptWasComputed) {
-                // script was not provided or computed, so we try to compute it
-                localeDataComputeScript(computed_script, language, country);
-                if (computed_script[0] == '\0') { // we could not compute the script
-                    countriesMustMatch = true;
-                } else {
-                    script = computed_script;
-                }
-            } else { // script was provided, so just use it
-                script = localeScript;
-            }
-        }
-
-        if (countriesMustMatch) {
-            if (country[0] != '\0'
-                && (country[0] != settings.country[0]
-                    || country[1] != settings.country[1])) {
-                return false;
-            }
-        } else {
-            if (memcmp(script, settings.localeScript, sizeof(settings.localeScript)) != 0) {
-                return false;
-            }
+        if (country[0] != 0
+            && (country[0] != settings.country[0]
+                || country[1] != settings.country[1])) {
+            return false;
         }
     }
 
@@ -2687,8 +2586,8 @@ void ResTable_config::appendDirLocale(String8& out) const {
     if (!language[0]) {
         return;
     }
-    const bool scriptWasProvided = localeScript[0] != '\0' && !localeScriptWasComputed;
-    if (!scriptWasProvided && !localeVariant[0]) {
+
+    if (!localeScript[0] && !localeVariant[0]) {
         // Legacy format.
         if (out.size() > 0) {
             out.append("-");
@@ -2706,7 +2605,7 @@ void ResTable_config::appendDirLocale(String8& out) const {
         return;
     }
 
-    // We are writing the modified BCP 47 tag.
+    // We are writing the modified bcp47 tag.
     // It starts with 'b+' and uses '+' as a separator.
 
     if (out.size() > 0) {
@@ -2718,7 +2617,7 @@ void ResTable_config::appendDirLocale(String8& out) const {
     size_t len = unpackLanguage(buf);
     out.append(buf, len);
 
-    if (scriptWasProvided) {
+    if (localeScript[0]) {
         out.append("+");
         out.append(localeScript, sizeof(localeScript));
     }
@@ -2731,7 +2630,7 @@ void ResTable_config::appendDirLocale(String8& out) const {
 
     if (localeVariant[0]) {
         out.append("+");
-        out.append(localeVariant, strnlen(localeVariant, sizeof(localeVariant)));
+        out.append(localeVariant, sizeof(localeVariant));
     }
 }
 
@@ -2749,7 +2648,7 @@ void ResTable_config::getBcp47Locale(char str[RESTABLE_MAX_LOCALE_LEN]) const {
         charsWritten += unpackLanguage(str);
     }
 
-    if (localeScript[0] && !localeScriptWasComputed) {
+    if (localeScript[0]) {
         if (charsWritten) {
             str[charsWritten++] = '-';
         }
@@ -2783,15 +2682,11 @@ void ResTable_config::getBcp47Locale(char str[RESTABLE_MAX_LOCALE_LEN]) const {
            config->language[0] ? config->packRegion(start) : config->packLanguage(start);
            break;
        case 4:
-           if ('0' <= start[0] && start[0] <= '9') {
-               // this is a variant, so fall through
-           } else {
-               config->localeScript[0] = toupper(start[0]);
-               for (size_t i = 1; i < 4; ++i) {
-                   config->localeScript[i] = tolower(start[i]);
-               }
-               break;
+           config->localeScript[0] = toupper(start[0]);
+           for (size_t i = 1; i < 4; ++i) {
+               config->localeScript[i] = tolower(start[i]);
            }
+           break;
        case 5:
        case 6:
        case 7:
@@ -2825,10 +2720,6 @@ void ResTable_config::setBcp47Locale(const char* in) {
 
     const size_t size = in + strlen(in) - start;
     assignLocaleComponent(this, start, size);
-    localeScriptWasComputed = (localeScript[0] == '\0');
-    if (localeScriptWasComputed) {
-        computeScript();
-    }
 }
 
 String8 ResTable_config::toString() const {
@@ -3189,15 +3080,13 @@ struct ResTable::Package
 // table that defined the package); the ones after are skins on top of it.
 struct ResTable::PackageGroup
 {
-    PackageGroup(
-            ResTable* _owner, const String16& _name, uint32_t _id,
-            bool appAsLib, bool _isSystemAsset)
+    PackageGroup(ResTable* _owner, const String16& _name, uint32_t _id)
         : owner(_owner)
         , name(_name)
         , id(_id)
         , largestTypeId(0)
-        , dynamicRefTable(static_cast<uint8_t>(_id), appAsLib)
-        , isSystemAsset(_isSystemAsset)
+        , bags(NULL)
+        , dynamicRefTable(static_cast<uint8_t>(_id))
     { }
 
     ~PackageGroup() {
@@ -3222,41 +3111,36 @@ struct ResTable::PackageGroup
         }
     }
 
-    /**
-     * Clear all cache related data that depends on parameters/configuration.
-     * This includes the bag caches and filtered types.
-     */
     void clearBagCache() {
-        for (size_t i = 0; i < typeCacheEntries.size(); i++) {
+        if (bags) {
             if (kDebugTableNoisy) {
-                printf("type=%zu\n", i);
+                printf("bags=%p\n", bags);
             }
-            const TypeList& typeList = types[i];
-            if (!typeList.isEmpty()) {
-                TypeCacheEntry& cacheEntry = typeCacheEntries.editItemAt(i);
-
-                // Reset the filtered configurations.
-                cacheEntry.filteredConfigs.clear();
-
-                bag_set** typeBags = cacheEntry.cachedBags;
+            for (size_t i = 0; i < bags->size(); i++) {
                 if (kDebugTableNoisy) {
-                    printf("typeBags=%p\n", typeBags);
+                    printf("type=%zu\n", i);
                 }
-
-                if (typeBags) {
-                    const size_t N = typeList[0]->entryCount;
+                const TypeList& typeList = types[i];
+                if (!typeList.isEmpty()) {
+                    bag_set** typeBags = bags->get(i);
                     if (kDebugTableNoisy) {
-                        printf("type->entryCount=%zu\n", N);
+                        printf("typeBags=%p\n", typeBags);
                     }
-                    for (size_t j = 0; j < N; j++) {
-                        if (typeBags[j] && typeBags[j] != (bag_set*)0xFFFFFFFF) {
-                            free(typeBags[j]);
+                    if (typeBags) {
+                        const size_t N = typeList[0]->entryCount;
+                        if (kDebugTableNoisy) {
+                            printf("type->entryCount=%zu\n", N);
                         }
+                        for (size_t j = 0; j < N; j++) {
+                            if (typeBags[j] && typeBags[j] != (bag_set*)0xFFFFFFFF)
+                                free(typeBags[j]);
+                        }
+                        free(typeBags);
                     }
-                    free(typeBags);
-                    cacheEntry.cachedBags = NULL;
                 }
             }
+            delete bags;
+            bags = NULL;
         }
     }
 
@@ -3284,11 +3168,9 @@ struct ResTable::PackageGroup
 
     uint8_t                         largestTypeId;
 
-    // Cached objects dependent on the parameters/configuration of this ResTable.
-    // Gets cleared whenever the parameters/configuration changes.
-    // These are stored here in a parallel structure because the data in `types` may
-    // be shared by other ResTable's (framework resources are shared this way).
-    ByteBucketArray<TypeCacheEntry> typeCacheEntries;
+    // Computed attribute bags, first indexed by the type and second
+    // by the entry in that type.
+    ByteBucketArray<bag_set**>*     bags;
 
     // The table mapping dynamic references to resolved references for
     // this package group.
@@ -3296,10 +3178,14 @@ struct ResTable::PackageGroup
     // by having these tables in a per-package scope rather than
     // per-package-group.
     DynamicRefTable                 dynamicRefTable;
+};
 
-    // If the package group comes from a system asset. Used in
-    // determining non-system locales.
-    const bool                      isSystemAsset;
+struct ResTable::bag_set
+{
+    size_t numAttrs;    // number in array
+    size_t availAttrs;  // total space in array
+    uint32_t typeSpecFlags;
+    // Followed by 'numAttr' bag_entry structures.
 };
 
 ResTable::Theme::Theme(const ResTable& table)
@@ -3646,7 +3532,7 @@ ResTable::ResTable(const void* data, size_t size, const int32_t cookie, bool cop
 {
     memset(&mParams, 0, sizeof(mParams));
     memset(mPackageMap, 0, sizeof(mPackageMap));
-    addInternal(data, size, NULL, 0, false, cookie, copyData);
+    addInternal(data, size, NULL, 0, cookie, copyData);
     LOG_FATAL_IF(mError != NO_ERROR, "Error parsing resource table");
     if (kDebugTableSuperNoisy) {
         ALOGI("Creating ResTable %p\n", this);
@@ -3667,12 +3553,12 @@ inline ssize_t ResTable::getResourcePackageIndex(uint32_t resID) const
 }
 
 status_t ResTable::add(const void* data, size_t size, const int32_t cookie, bool copyData) {
-    return addInternal(data, size, NULL, 0, false, cookie, copyData);
+    return addInternal(data, size, NULL, 0, cookie, copyData);
 }
 
 status_t ResTable::add(const void* data, size_t size, const void* idmapData, size_t idmapDataSize,
-        const int32_t cookie, bool copyData, bool appAsLib) {
-    return addInternal(data, size, idmapData, idmapDataSize, appAsLib, cookie, copyData);
+        const int32_t cookie, bool copyData) {
+    return addInternal(data, size, idmapData, idmapDataSize, cookie, copyData);
 }
 
 status_t ResTable::add(Asset* asset, const int32_t cookie, bool copyData) {
@@ -3682,13 +3568,10 @@ status_t ResTable::add(Asset* asset, const int32_t cookie, bool copyData) {
         return UNKNOWN_ERROR;
     }
 
-    return addInternal(data, static_cast<size_t>(asset->getLength()), NULL, false, 0, cookie,
-            copyData);
+    return addInternal(data, static_cast<size_t>(asset->getLength()), NULL, 0, cookie, copyData);
 }
 
-status_t ResTable::add(
-        Asset* asset, Asset* idmapAsset, const int32_t cookie, bool copyData,
-        bool appAsLib, bool isSystemAsset) {
+status_t ResTable::add(Asset* asset, Asset* idmapAsset, const int32_t cookie, bool copyData) {
     const void* data = asset->getBuffer(true);
     if (data == NULL) {
         ALOGW("Unable to get buffer of resource asset file");
@@ -3707,21 +3590,20 @@ status_t ResTable::add(
     }
 
     return addInternal(data, static_cast<size_t>(asset->getLength()),
-            idmapData, idmapSize, appAsLib, cookie, copyData, isSystemAsset);
+            idmapData, idmapSize, cookie, copyData);
 }
 
-status_t ResTable::add(ResTable* src, bool isSystemAsset)
+status_t ResTable::add(ResTable* src)
 {
     mError = src->mError;
 
-    for (size_t i=0; i < src->mHeaders.size(); i++) {
+    for (size_t i=0; i<src->mHeaders.size(); i++) {
         mHeaders.add(src->mHeaders[i]);
     }
 
-    for (size_t i=0; i < src->mPackageGroups.size(); i++) {
+    for (size_t i=0; i<src->mPackageGroups.size(); i++) {
         PackageGroup* srcPg = src->mPackageGroups[i];
-        PackageGroup* pg = new PackageGroup(this, srcPg->name, srcPg->id,
-                false /* appAsLib */, isSystemAsset || srcPg->isSystemAsset);
+        PackageGroup* pg = new PackageGroup(this, srcPg->name, srcPg->id);
         for (size_t j=0; j<srcPg->packages.size(); j++) {
             pg->packages.add(srcPg->packages[j]);
         }
@@ -3762,7 +3644,7 @@ status_t ResTable::addEmpty(const int32_t cookie) {
 }
 
 status_t ResTable::addInternal(const void* data, size_t dataSize, const void* idmapData, size_t idmapDataSize,
-        bool appAsLib, const int32_t cookie, bool copyData, bool isSystemAsset)
+        const int32_t cookie, bool copyData)
 {
     if (!data) {
         return NO_ERROR;
@@ -3865,8 +3747,7 @@ status_t ResTable::addInternal(const void* data, size_t dataSize, const void* id
                 return (mError=BAD_TYPE);
             }
 
-            if (parsePackage(
-                    (ResTable_package*)chunk, header, appAsLib, isSystemAsset) != NO_ERROR) {
+            if (parsePackage((ResTable_package*)chunk, header) != NO_ERROR) {
                 return mError;
             }
             curPackage++;
@@ -3937,9 +3818,7 @@ bool ResTable::getResourceName(uint32_t resID, bool allowUtf8, resource_name* ou
         if (Res_GETPACKAGE(resID)+1 == 0) {
             ALOGW("No package identifier when getting name for resource number 0x%08x", resID);
         } else {
-#ifndef STATIC_ANDROIDFW_FOR_TOOLS
             ALOGW("No known package when getting name for resource number 0x%08x", resID);
-#endif
         }
         return false;
     }
@@ -4195,32 +4074,39 @@ ssize_t ResTable::getBagLocked(uint32_t resID, const bag_entry** outBag,
     }
 
     // First see if we've already computed this bag...
-    TypeCacheEntry& cacheEntry = grp->typeCacheEntries.editItemAt(t);
-    bag_set** typeSet = cacheEntry.cachedBags;
-    if (typeSet) {
-        bag_set* set = typeSet[e];
-        if (set) {
-            if (set != (bag_set*)0xFFFFFFFF) {
-                if (outTypeSpecFlags != NULL) {
-                    *outTypeSpecFlags = set->typeSpecFlags;
+    if (grp->bags) {
+        bag_set** typeSet = grp->bags->get(t);
+        if (typeSet) {
+            bag_set* set = typeSet[e];
+            if (set) {
+                if (set != (bag_set*)0xFFFFFFFF) {
+                    if (outTypeSpecFlags != NULL) {
+                        *outTypeSpecFlags = set->typeSpecFlags;
+                    }
+                    *outBag = (bag_entry*)(set+1);
+                    if (kDebugTableSuperNoisy) {
+                        ALOGI("Found existing bag for: 0x%x\n", resID);
+                    }
+                    return set->numAttrs;
                 }
-                *outBag = (bag_entry*)(set+1);
-                if (kDebugTableSuperNoisy) {
-                    ALOGI("Found existing bag for: 0x%x\n", resID);
-                }
-                return set->numAttrs;
+                ALOGW("Attempt to retrieve bag 0x%08x which is invalid or in a cycle.",
+                     resID);
+                return BAD_INDEX;
             }
-            ALOGW("Attempt to retrieve bag 0x%08x which is invalid or in a cycle.",
-                 resID);
-            return BAD_INDEX;
         }
     }
 
     // Bag not found, we need to compute it!
+    if (!grp->bags) {
+        grp->bags = new ByteBucketArray<bag_set**>();
+        if (!grp->bags) return NO_MEMORY;
+    }
+
+    bag_set** typeSet = grp->bags->get(t);
     if (!typeSet) {
         typeSet = (bag_set**)calloc(NENTRY, sizeof(bag_set*));
         if (!typeSet) return NO_MEMORY;
-        cacheEntry.cachedBags = typeSet;
+        grp->bags->set(t, typeSet);
     }
 
     // Mark that we are currently working on this one.
@@ -4426,56 +4312,18 @@ ssize_t ResTable::getBagLocked(uint32_t resID, const bag_entry** outBag,
 
 void ResTable::setParameters(const ResTable_config* params)
 {
-    AutoMutex _lock(mLock);
-    AutoMutex _lock2(mFilteredConfigLock);
-
+    mLock.lock();
     if (kDebugTableGetEntry) {
         ALOGI("Setting parameters: %s\n", params->toString().string());
     }
     mParams = *params;
-    for (size_t p = 0; p < mPackageGroups.size(); p++) {
-        PackageGroup* packageGroup = mPackageGroups.editItemAt(p);
+    for (size_t i=0; i<mPackageGroups.size(); i++) {
         if (kDebugTableNoisy) {
-            ALOGI("CLEARING BAGS FOR GROUP %zu!", p);
+            ALOGI("CLEARING BAGS FOR GROUP %zu!", i);
         }
-        packageGroup->clearBagCache();
-
-        // Find which configurations match the set of parameters. This allows for a much
-        // faster lookup in getEntry() if the set of values is narrowed down.
-        for (size_t t = 0; t < packageGroup->types.size(); t++) {
-            if (packageGroup->types[t].isEmpty()) {
-                continue;
-            }
-
-            TypeList& typeList = packageGroup->types.editItemAt(t);
-
-            // Retrieve the cache entry for this type.
-            TypeCacheEntry& cacheEntry = packageGroup->typeCacheEntries.editItemAt(t);
-
-            for (size_t ts = 0; ts < typeList.size(); ts++) {
-                Type* type = typeList.editItemAt(ts);
-
-                std::shared_ptr<Vector<const ResTable_type*>> newFilteredConfigs =
-                        std::make_shared<Vector<const ResTable_type*>>();
-
-                for (size_t ti = 0; ti < type->configs.size(); ti++) {
-                    ResTable_config config;
-                    config.copyFromDtoH(type->configs[ti]->config);
-
-                    if (config.match(mParams)) {
-                        newFilteredConfigs->add(type->configs[ti]);
-                    }
-                }
-
-                if (kDebugTableNoisy) {
-                    ALOGD("Updating pkg=%zu type=%zu with %zu filtered configs",
-                          p, t, newFilteredConfigs->size());
-                }
-
-                cacheEntry.filteredConfigs.add(newFilteredConfigs);
-            }
-        }
+        mPackageGroups[i]->clearBagCache();
     }
+    mLock.unlock();
 }
 
 void ResTable::getParameters(ResTable_config* params) const
@@ -5190,8 +5038,7 @@ bool ResTable::stringToValue(Res_value* outValue, String16* outString,
                 }
 
                 uint32_t packageId = Res_GETPACKAGE(rid) + 1;
-                if (packageId != APP_PACKAGE_ID && packageId != SYS_PACKAGE_ID &&
-                        packageId != ARIEL_PACKAGE_ID) {
+                if (packageId != APP_PACKAGE_ID && packageId != SYS_PACKAGE_ID) {
                     outValue->dataType = Res_value::TYPE_DYNAMIC_REFERENCE;
                 }
                 outValue->data = rid;
@@ -5212,8 +5059,7 @@ bool ResTable::stringToValue(Res_value* outValue, String16* outString,
                         outValue->data = rid;
                         outValue->dataType = Res_value::TYPE_DYNAMIC_REFERENCE;
                         return true;
-                    } else if (packageId == APP_PACKAGE_ID || packageId == SYS_PACKAGE_ID ||
-                            packageId == ARIEL_PACKAGE_ID) {
+                    } else if (packageId == APP_PACKAGE_ID || packageId == SYS_PACKAGE_ID) {
                         // We accept packageId's generated as 0x01 in order to support
                         // building the android system resources
                         outValue->data = rid;
@@ -5351,18 +5197,16 @@ bool ResTable::stringToValue(Res_value* outValue, String16* outString,
                     return false;
                 }
             }
-
-            if (accessor) {
-                rid = Res_MAKEID(
-                    accessor->getRemappedPackage(Res_GETPACKAGE(rid)),
-                    Res_GETTYPE(rid), Res_GETENTRY(rid));
+            if (!accessor) {
+                outValue->data = rid;
+                return true;
             }
-
-            uint32_t packageId = Res_GETPACKAGE(rid) + 1;
-            if (packageId != APP_PACKAGE_ID && packageId != SYS_PACKAGE_ID &&
-                    packageId != ARIEL_PACKAGE_ID) {
-                outValue->dataType = Res_value::TYPE_DYNAMIC_ATTRIBUTE;
-            }
+            rid = Res_MAKEID(
+                accessor->getRemappedPackage(Res_GETPACKAGE(rid)),
+                Res_GETTYPE(rid), Res_GETENTRY(rid));
+            //printf("Incl %s:%s/%s: 0x%08x\n",
+            //       String8(package).string(), String8(type).string(),
+            //       String8(name).string(), rid);
             outValue->data = rid;
             return true;
         }
@@ -5370,18 +5214,11 @@ bool ResTable::stringToValue(Res_value* outValue, String16* outString,
         if (accessor) {
             uint32_t rid = accessor->getCustomResource(package, type, name);
             if (rid != 0) {
-                uint32_t packageId = Res_GETPACKAGE(rid) + 1;
-                if (packageId == 0x00) {
-                    outValue->data = rid;
-                    outValue->dataType = Res_value::TYPE_DYNAMIC_ATTRIBUTE;
-                    return true;
-                } else if (packageId == APP_PACKAGE_ID || packageId == SYS_PACKAGE_ID ||
-                        packageId == ARIEL_PACKAGE_ID) {
-                    // We accept packageId's generated as 0x01 in order to support
-                    // building the android system resources
-                    outValue->data = rid;
-                    return true;
-                }
+                //printf("Mine %s:%s/%s: 0x%08x\n",
+                //       String8(package).string(), String8(type).string(),
+                //       String8(name).string(), rid);
+                outValue->data = rid;
+                return true;
             }
         }
 
@@ -5823,23 +5660,11 @@ const DynamicRefTable* ResTable::getDynamicRefTableForCookie(int32_t cookie) con
     return NULL;
 }
 
-static bool compareResTableConfig(const ResTable_config& a, const ResTable_config& b) {
-    return a.compare(b) < 0;
-}
-
-template <typename Func>
-void ResTable::forEachConfiguration(bool ignoreMipmap, bool ignoreAndroidPackage,
-                                    bool includeSystemConfigs, const Func& f) const {
+void ResTable::getConfigurations(Vector<ResTable_config>* configs, bool ignoreMipmap) const
+{
     const size_t packageCount = mPackageGroups.size();
-    const String16 android("android");
     for (size_t i = 0; i < packageCount; i++) {
         const PackageGroup* packageGroup = mPackageGroups[i];
-        if (ignoreAndroidPackage && android == packageGroup->name) {
-            continue;
-        }
-        if (!includeSystemConfigs && packageGroup->isSystemAsset) {
-            continue;
-        }
         const size_t typeCount = packageGroup->types.size();
         for (size_t j = 0; j < typeCount; j++) {
             const TypeList& typeList = packageGroup->types[j];
@@ -5858,48 +5683,46 @@ void ResTable::forEachConfiguration(bool ignoreMipmap, bool ignoreAndroidPackage
                     ResTable_config cfg;
                     memset(&cfg, 0, sizeof(ResTable_config));
                     cfg.copyFromDtoH(config->config);
-
-                    f(cfg);
+                    // only insert unique
+                    const size_t N = configs->size();
+                    size_t n;
+                    for (n = 0; n < N; n++) {
+                        if (0 == (*configs)[n].compare(cfg)) {
+                            break;
+                        }
+                    }
+                    // if we didn't find it
+                    if (n == N) {
+                        configs->add(cfg);
+                    }
                 }
             }
         }
     }
 }
 
-void ResTable::getConfigurations(Vector<ResTable_config>* configs, bool ignoreMipmap,
-                                 bool ignoreAndroidPackage, bool includeSystemConfigs) const {
-    auto func = [&](const ResTable_config& cfg) {
-        const auto beginIter = configs->begin();
-        const auto endIter = configs->end();
+void ResTable::getLocales(Vector<String8>* locales) const
+{
+    Vector<ResTable_config> configs;
+    ALOGV("calling getConfigurations");
+    getConfigurations(&configs);
+    ALOGV("called getConfigurations size=%d", (int)configs.size());
+    const size_t I = configs.size();
 
-        auto iter = std::lower_bound(beginIter, endIter, cfg, compareResTableConfig);
-        if (iter == endIter || iter->compare(cfg) != 0) {
-            configs->insertAt(cfg, std::distance(beginIter, iter));
-        }
-    };
-    forEachConfiguration(ignoreMipmap, ignoreAndroidPackage, includeSystemConfigs, func);
-}
-
-static bool compareString8AndCString(const String8& str, const char* cStr) {
-    return strcmp(str.string(), cStr) < 0;
-}
-
-void ResTable::getLocales(Vector<String8>* locales, bool includeSystemLocales) const {
     char locale[RESTABLE_MAX_LOCALE_LEN];
-
-    forEachConfiguration(false, false, includeSystemLocales, [&](const ResTable_config& cfg) {
-        if (cfg.locale != 0) {
-            cfg.getBcp47Locale(locale);
-
-            const auto beginIter = locales->begin();
-            const auto endIter = locales->end();
-
-            auto iter = std::lower_bound(beginIter, endIter, locale, compareString8AndCString);
-            if (iter == endIter || strcmp(iter->string(), locale) != 0) {
-                locales->insertAt(String8(locale), std::distance(beginIter, iter));
+    for (size_t i=0; i<I; i++) {
+        configs[i].getBcp47Locale(locale);
+        const size_t J = locales->size();
+        size_t j;
+        for (j=0; j<J; j++) {
+            if (0 == strcmp(locale, (*locales)[j].string())) {
+                break;
             }
         }
-    });
+        if (j == J) {
+            locales->add(String8(locale));
+        }
+    }
 }
 
 StringPoolRef::StringPoolRef(const ResStringPool* pool, uint32_t index)
@@ -6023,32 +5846,9 @@ status_t ResTable::getEntry(
             specFlags = -1;
         }
 
-        const Vector<const ResTable_type*>* candidateConfigs = &typeSpec->configs;
-
-        std::shared_ptr<Vector<const ResTable_type*>> filteredConfigs;
-        if (config && memcmp(&mParams, config, sizeof(mParams)) == 0) {
-            // Grab the lock first so we can safely get the current filtered list.
-            AutoMutex _lock(mFilteredConfigLock);
-
-            // This configuration is equal to the one we have previously cached for,
-            // so use the filtered configs.
-
-            const TypeCacheEntry& cacheEntry = packageGroup->typeCacheEntries[typeIndex];
-            if (i < cacheEntry.filteredConfigs.size()) {
-                if (cacheEntry.filteredConfigs[i]) {
-                    // Grab a reference to the shared_ptr so it doesn't get destroyed while
-                    // going through this list.
-                    filteredConfigs = cacheEntry.filteredConfigs[i];
-
-                    // Use this filtered list.
-                    candidateConfigs = filteredConfigs.get();
-                }
-            }
-        }
-
-        const size_t numConfigs = candidateConfigs->size();
+        const size_t numConfigs = typeSpec->configs.size();
         for (size_t c = 0; c < numConfigs; c++) {
-            const ResTable_type* const thisType = candidateConfigs->itemAt(c);
+            const ResTable_type* const thisType = typeSpec->configs[c];
             if (thisType == NULL) {
                 continue;
             }
@@ -6131,7 +5931,7 @@ status_t ResTable::getEntry(
 }
 
 status_t ResTable::parsePackage(const ResTable_package* const pkg,
-                                const Header* const header, bool appAsLib, bool isSystemAsset)
+                                const Header* const header)
 {
     const uint8_t* base = (const uint8_t*)pkg;
     status_t err = validate_chunk(&pkg->header, sizeof(*pkg) - sizeof(pkg->typeIdOffset),
@@ -6179,8 +5979,8 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
     if (id >= 256) {
         LOG_ALWAYS_FATAL("Package id out of range");
         return NO_ERROR;
-    } else if (id == 0 || (id == 0x7f && appAsLib) || isSystemAsset) {
-        // This is a library or a system asset, so assign an ID
+    } else if (id == 0) {
+        // This is a library so assign an ID
         id = mNextPackageId++;
     }
 
@@ -6212,7 +6012,7 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
 
         char16_t tmpName[sizeof(pkg->name)/sizeof(pkg->name[0])];
         strcpy16_dtoh(tmpName, pkg->name, sizeof(pkg->name)/sizeof(pkg->name[0]));
-        group = new PackageGroup(this, String16(tmpName), id, appAsLib, isSystemAsset);
+        group = new PackageGroup(this, String16(tmpName), id);
         if (group == NULL) {
             delete package;
             return (mError=NO_MEMORY);
@@ -6424,16 +6224,14 @@ status_t ResTable::parsePackage(const ResTable_package* const pkg,
     return NO_ERROR;
 }
 
-DynamicRefTable::DynamicRefTable(uint8_t packageId, bool appAsLib)
+DynamicRefTable::DynamicRefTable(uint8_t packageId)
     : mAssignedPackageId(packageId)
-    , mAppAsLib(appAsLib)
 {
     memset(mLookupTable, 0, sizeof(mLookupTable));
 
     // Reserved package ids
     mLookupTable[APP_PACKAGE_ID] = APP_PACKAGE_ID;
     mLookupTable[SYS_PACKAGE_ID] = SYS_PACKAGE_ID;
-    mLookupTable[ARIEL_PACKAGE_ID] = ARIEL_PACKAGE_ID;
 }
 
 status_t DynamicRefTable::load(const ResTable_lib_header* const header)
@@ -6512,18 +6310,16 @@ status_t DynamicRefTable::lookupResourceId(uint32_t* resId) const {
     uint32_t res = *resId;
     size_t packageId = Res_GETPACKAGE(res) + 1;
 
-    if (packageId == APP_PACKAGE_ID && !mAppAsLib) {
+    if (packageId == APP_PACKAGE_ID) {
         // No lookup needs to be done, app package IDs are absolute.
         return NO_ERROR;
     }
 
-    if (packageId == 0 || (packageId == APP_PACKAGE_ID && mAppAsLib)) {
+    if (packageId == 0) {
         // The package ID is 0x00. That means that a shared library is accessing
-        // its own local resource.
-        // Or if app resource is loaded as shared library, the resource which has
-        // app package Id is local resources.
-        // so we fix up those resources with the calling package ID.
-        *resId = (0xFFFFFF & (*resId)) | (((uint32_t) mAssignedPackageId) << 24);
+        // its own local resource, so we fix up the resource with the calling
+        // package ID.
+        *resId |= ((uint32_t) mAssignedPackageId) << 24;
         return NO_ERROR;
     }
 
@@ -6545,25 +6341,7 @@ status_t DynamicRefTable::lookupResourceId(uint32_t* resId) const {
 }
 
 status_t DynamicRefTable::lookupResourceValue(Res_value* value) const {
-    uint8_t resolvedType = Res_value::TYPE_REFERENCE;
-    switch (value->dataType) {
-    case Res_value::TYPE_ATTRIBUTE:
-        resolvedType = Res_value::TYPE_ATTRIBUTE;
-        // fallthrough
-    case Res_value::TYPE_REFERENCE:
-        if (!mAppAsLib) {
-            return NO_ERROR;
-        }
-
-        // If the package is loaded as shared library, the resource reference
-        // also need to be fixed.
-        break;
-    case Res_value::TYPE_DYNAMIC_ATTRIBUTE:
-        resolvedType = Res_value::TYPE_ATTRIBUTE;
-        // fallthrough
-    case Res_value::TYPE_DYNAMIC_REFERENCE:
-        break;
-    default:
+    if (value->dataType != Res_value::TYPE_DYNAMIC_REFERENCE) {
         return NO_ERROR;
     }
 
@@ -6572,7 +6350,7 @@ status_t DynamicRefTable::lookupResourceValue(Res_value* value) const {
         return err;
     }
 
-    value->dataType = resolvedType;
+    value->dataType = Res_value::TYPE_REFERENCE;
     return NO_ERROR;
 }
 
@@ -6850,8 +6628,6 @@ void ResTable::print_value(const Package* pkg, const Res_value& value) const
         printf("(dynamic reference) 0x%08x\n", value.data);
     } else if (value.dataType == Res_value::TYPE_ATTRIBUTE) {
         printf("(attribute) 0x%08x\n", value.data);
-    } else if (value.dataType == Res_value::TYPE_DYNAMIC_ATTRIBUTE) {
-        printf("(dynamic attribute) 0x%08x\n", value.data);
     } else if (value.dataType == Res_value::TYPE_STRING) {
         size_t len;
         const char* str8 = pkg->header->values.string8At(
