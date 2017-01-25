@@ -439,6 +439,15 @@ public final class SystemServer {
         boolean disableNetworkTime = SystemProperties.getBoolean("config.disable_networktime", false);
         boolean isEmulator = SystemProperties.get("ro.kernel.qemu").equals("1");
 
+        String externalServer = "";
+        try{
+            externalServer = context.getResources().getString(
+                com.ariel.platform.internal.R.string.config_externalSystemServer);
+        }
+        catch(Exception e){
+            Slog.e(TAG, "Error loading external server", e);
+        }
+
         try {
             Slog.i(TAG, "Reading configuration...");
             SystemConfig.getInstance();
@@ -1006,6 +1015,27 @@ public final class SystemServer {
 
         // MMS service broker
         mmsService = mSystemServiceManager.startService(MmsServiceBroker.class);
+
+        final Class<?> serverClazz;
+        try {
+            if(externalServer.length()>0){
+                Slog.i(TAG, "Setting up external system server: "+externalServer);
+                serverClazz = Class.forName(externalServer);
+                final Constructor<?> constructor = serverClazz.getDeclaredConstructor(Context.class);
+                constructor.setAccessible(true);
+                final Object baseObject = constructor.newInstance(mSystemContext);
+                final Method method = baseObject.getClass().getDeclaredMethod("run");
+                method.setAccessible(true);
+                method.invoke(baseObject);
+            }
+        } catch (ClassNotFoundException
+                | IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchMethodException e) {
+            Slog.wtf(TAG, "Unable to start  " + externalServer);
+            Slog.wtf(TAG, e);
+        }
 
         // It is now time to start up the app processes...
 
