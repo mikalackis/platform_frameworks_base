@@ -75,6 +75,7 @@ static const char* kDefaultVendor = "default";
 static const char* kAssetsRoot = "assets";
 static const char* kAppZipName = NULL; //"classes.jar";
 static const char* kSystemAssets = "framework/framework-res.apk";
+static const char* kArielSDKAssets = "framework/com.ariel.platform-res.apk";
 static const char* kResourceCache = "resource-cache";
 static const char* kAndroidManifest = "AndroidManifest.xml";
 
@@ -340,7 +341,10 @@ bool AssetManager::addDefaultAssets()
     String8 path(root);
     path.appendPath(kSystemAssets);
 
-    return addAssetPath(path, NULL);
+    String8 pathAriel(root);
+    pathAriel.appendPath(kArielSDKAssets);
+
+    return addAssetPath(path, NULL) & addAssetPath(pathAriel, NULL);
 }
 
 int32_t AssetManager::nextAssetPath(const int32_t cookie) const
