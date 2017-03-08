@@ -518,6 +518,7 @@ final class DefaultPermissionGrantPolicy {
             if (emailPackage != null
                     && doesPackageSupportRuntimePermissions(emailPackage)) {
                 grantRuntimePermissionsLPw(emailPackage, CONTACTS_PERMISSIONS, userId);
+                grantRuntimePermissionsLPw(emailPackage, CALENDAR_PERMISSIONS, userId);
             }
 
             // Browser
@@ -535,17 +536,6 @@ final class DefaultPermissionGrantPolicy {
             if (browserPackage != null
                     && doesPackageSupportRuntimePermissions(browserPackage)) {
                 grantRuntimePermissionsLPw(browserPackage, LOCATION_PERMISSIONS, userId);
-            }
-
-            // IME
-            if (imePackageNames != null) {
-                for (String imePackageName : imePackageNames) {
-                    PackageParser.Package imePackage = getSystemPackageLPr(imePackageName);
-                    if (imePackage != null
-                            && doesPackageSupportRuntimePermissions(imePackage)) {
-                        grantRuntimePermissionsLPw(imePackage, CONTACTS_PERMISSIONS, userId);
-                    }
-                }
             }
 
             // Voice interaction
@@ -787,10 +777,14 @@ final class DefaultPermissionGrantPolicy {
     private void grantDefaultPermissionsToDefaultSystemDialerAppLPr(
             PackageParser.Package dialerPackage, int userId) {
         if (doesPackageSupportRuntimePermissions(dialerPackage)) {
-            grantRuntimePermissionsLPw(dialerPackage, PHONE_PERMISSIONS, userId);
+            boolean isPhonePermFixed =
+                    mService.hasSystemFeature(PackageManager.FEATURE_WATCH, 0);
+            grantRuntimePermissionsLPw(
+                    dialerPackage, PHONE_PERMISSIONS, isPhonePermFixed, userId);
             grantRuntimePermissionsLPw(dialerPackage, CONTACTS_PERMISSIONS, userId);
             grantRuntimePermissionsLPw(dialerPackage, SMS_PERMISSIONS, userId);
             grantRuntimePermissionsLPw(dialerPackage, MICROPHONE_PERMISSIONS, userId);
+            grantRuntimePermissionsLPw(dialerPackage, CAMERA_PERMISSIONS, userId);
         }
     }
 
@@ -828,6 +822,7 @@ final class DefaultPermissionGrantPolicy {
             grantRuntimePermissionsLPw(dialerPackage, CONTACTS_PERMISSIONS, false, true, userId);
             grantRuntimePermissionsLPw(dialerPackage, SMS_PERMISSIONS, false, true, userId);
             grantRuntimePermissionsLPw(dialerPackage, MICROPHONE_PERMISSIONS, false, true, userId);
+            grantRuntimePermissionsLPw(dialerPackage, CAMERA_PERMISSIONS, false, true, userId);
         }
     }
 
@@ -880,29 +875,24 @@ final class DefaultPermissionGrantPolicy {
 
     private PackageParser.Package getDefaultSystemHandlerActivityPackageLPr(
             Intent intent, int userId) {
-        List<ResolveInfo> handlers = mService.mActivities.queryIntent(intent,
-                intent.resolveType(mService.mContext.getContentResolver()),
-                PackageManager.GET_DISABLED_COMPONENTS, userId);
-        if (handlers == null) {
+        ResolveInfo handler = mService.resolveIntent(intent,
+                intent.resolveType(mService.mContext.getContentResolver()), DEFAULT_FLAGS, userId);
+        if (handler == null || handler.activityInfo == null) {
             return null;
         }
-        final int handlerCount = handlers.size();
-        for (int i = 0; i < handlerCount; i++) {
-            ResolveInfo handler = handlers.get(i);
-            PackageParser.Package handlerPackage = getSystemPackageLPr(
-                    handler.activityInfo.packageName);
-            if (handlerPackage != null) {
-                return handlerPackage;
-            }
+        ActivityInfo activityInfo = handler.activityInfo;
+        if (activityInfo.packageName.equals(mService.mResolveActivity.packageName)
+                && activityInfo.name.equals(mService.mResolveActivity.name)) {
+            return null;
         }
-        return null;
+        return getSystemPackageLPr(handler.activityInfo.packageName);
     }
 
     private PackageParser.Package getDefaultSystemHandlerServicePackageLPr(
             Intent intent, int userId) {
         List<ResolveInfo> handlers = mService.queryIntentServices(intent,
-                intent.resolveType(mService.mContext.getContentResolver()),
-                PackageManager.GET_DISABLED_COMPONENTS, userId);
+                intent.resolveType(mService.mContext.getContentResolver()), DEFAULT_FLAGS, userId)
+                .getList();
         if (handlers == null) {
             return null;
         }
@@ -928,10 +918,10 @@ final class DefaultPermissionGrantPolicy {
         for (String syncAdapterPackageName : syncAdapterPackageNames) {
             homeIntent.setPackage(syncAdapterPackageName);
 
-            List<ResolveInfo> homeActivities = mService.mActivities.queryIntent(homeIntent,
-                    homeIntent.resolveType(mService.mContext.getContentResolver()),
-                    PackageManager.GET_DISABLED_COMPONENTS, userId);
-            if (!homeActivities.isEmpty()) {
+            ResolveInfo homeActivity = mService.resolveIntent(homeIntent,
+                    homeIntent.resolveType(mService.mContext.getContentResolver()), DEFAULT_FLAGS,
+                    userId);
+            if (homeActivity != null) {
                 continue;
             }
 
@@ -946,7 +936,7 @@ final class DefaultPermissionGrantPolicy {
 
     private PackageParser.Package getDefaultProviderAuthorityPackageLPr(
             String authority, int userId) {
-        ProviderInfo provider = mService.resolveContentProvider(authority, 0, userId);
+        ProviderInfo provider = mService.resolveContentProvider(authority, DEFAULT_FLAGS, userId);
         if (provider != null) {
             return getSystemPackageLPr(provider.packageName);
         }
@@ -976,7 +966,7 @@ final class DefaultPermissionGrantPolicy {
     }
 
     private void grantRuntimePermissionsLPw(PackageParser.Package pkg, Set<String> permissions,
-            boolean systemFixed, boolean overrideUserChoice,  int userId) {
+            boolean systemFixed, boolean isDefaultPhoneOrSms, int userId) {
         if (pkg.requestedPermissions.isEmpty()) {
             return;
         }
@@ -984,7 +974,13 @@ final class DefaultPermissionGrantPolicy {
         List<String> requestedPermissions = pkg.requestedPermissions;
         Set<String> grantablePermissions = null;
 
-        if (pkg.isUpdatedSystemApp()) {
+        // If this is the default Phone or SMS app we grant permissions regardless
+        // whether the version on the system image declares the permission as used since
+        // selecting the app as the default Phone or SMS the user makes a deliberate
+        // choice to grant this app the permissions needed to function. For all other
+        // apps, (default grants on first boot and user creation) we don't grant default
+        // permissions if the version on the system image does not declare them.
+        if (!isDefaultPhoneOrSms && pkg.isUpdatedSystemApp()) {
             PackageSetting sysPs = mService.mSettings.getDisabledSystemPkgLPr(pkg.packageName);
             if (sysPs != null) {
                 if (sysPs.pkg.requestedPermissions.isEmpty()) {
@@ -1016,7 +1012,7 @@ final class DefaultPermissionGrantPolicy {
                 // Unless the caller wants to override user choices. The override is
                 // to make sure we can grant the needed permission to the default
                 // sms and phone apps after the user chooses this in the UI.
-                if (flags == 0 || overrideUserChoice) {
+                if (flags == 0 || isDefaultPhoneOrSms) {
                     // Never clobber policy or system.
                     final int fixedFlags = PackageManager.FLAG_PERMISSION_SYSTEM_FIXED
                             | PackageManager.FLAG_PERMISSION_POLICY_FIXED;
@@ -1026,8 +1022,8 @@ final class DefaultPermissionGrantPolicy {
 
                     mService.grantRuntimePermission(pkg.packageName, permission, userId);
                     if (DEBUG) {
-                        Log.i(TAG, "Granted " + permission + " to default handler "
-                                + pkg.packageName);
+                        Log.i(TAG, "Granted " + (systemFixed ? "fixed " : "not fixed ")
+                                + permission + " to default handler " + pkg.packageName);
                     }
 
                     int newFlags = PackageManager.FLAG_PERMISSION_GRANTED_BY_DEFAULT;
@@ -1037,6 +1033,19 @@ final class DefaultPermissionGrantPolicy {
 
                     mService.updatePermissionFlags(permission, pkg.packageName,
                             newFlags, newFlags, userId);
+                }
+
+                // If a component gets a permission for being the default handler A
+                // and also default handler B, we grant the weaker grant form.
+                if ((flags & PackageManager.FLAG_PERMISSION_GRANTED_BY_DEFAULT) != 0
+                        && (flags & PackageManager.FLAG_PERMISSION_SYSTEM_FIXED) != 0
+                        && !systemFixed) {
+                    if (DEBUG) {
+                        Log.i(TAG, "Granted not fixed " + permission + " to default handler "
+                                + pkg.packageName);
+                    }
+                    mService.updatePermissionFlags(permission, pkg.packageName,
+                            PackageManager.FLAG_PERMISSION_SYSTEM_FIXED, 0, userId);
                 }
             }
         }
@@ -1050,7 +1059,7 @@ final class DefaultPermissionGrantPolicy {
             return false;
         }
         PackageSetting sysPkg = mService.mSettings.getDisabledSystemPkgLPr(pkg.packageName);
-        if (sysPkg != null) {
+        if (sysPkg != null && sysPkg.pkg != null) {
             if ((sysPkg.pkg.applicationInfo.flags & ApplicationInfo.FLAG_PERSISTENT) == 0) {
                 return false;
             }
@@ -1061,7 +1070,175 @@ final class DefaultPermissionGrantPolicy {
                 pkg.mSignatures) == PackageManager.SIGNATURE_MATCH;
     }
 
+    private void grantDefaultPermissionExceptions(int userId) {
+        synchronized (mService.mPackages) {
+            mHandler.removeMessages(MSG_READ_DEFAULT_PERMISSION_EXCEPTIONS);
+
+            if (mGrantExceptions == null) {
+                mGrantExceptions = readDefaultPermissionExceptionsLPw();
+            }
+
+            // mGrantExceptions is null only before the first read and then
+            // it serves as a cache of the default grants that should be
+            // performed for every user. If there is an entry then the app
+            // is on the system image and supports runtime permissions.
+            Set<String> permissions = null;
+            final int exceptionCount = mGrantExceptions.size();
+            for (int i = 0; i < exceptionCount; i++) {
+                String packageName = mGrantExceptions.keyAt(i);
+                PackageParser.Package pkg = getSystemPackageLPr(packageName);
+                List<DefaultPermissionGrant> permissionGrants = mGrantExceptions.valueAt(i);
+                final int permissionGrantCount = permissionGrants.size();
+                for (int j = 0; j < permissionGrantCount; j++) {
+                    DefaultPermissionGrant permissionGrant = permissionGrants.get(j);
+                    if (permissions == null) {
+                        permissions = new ArraySet<>();
+                    } else {
+                        permissions.clear();
+                    }
+                    permissions.add(permissionGrant.name);
+                    grantRuntimePermissionsLPw(pkg, permissions, false,
+                            permissionGrant.fixed, userId);
+                }
+            }
+        }
+    }
+
+    private @NonNull ArrayMap<String, List<DefaultPermissionGrant>>
+            readDefaultPermissionExceptionsLPw() {
+        File dir = new File(Environment.getRootDirectory(), "etc/default-permissions");
+        if (!dir.exists() || !dir.isDirectory() || !dir.canRead()) {
+            return new ArrayMap<>(0);
+        }
+
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return new ArrayMap<>(0);
+        }
+
+        ArrayMap<String, List<DefaultPermissionGrant>> grantExceptions = new ArrayMap<>();
+
+        // Iterate over the files in the directory and scan .xml files
+        for (File file : files) {
+            if (!file.getPath().endsWith(".xml")) {
+                Slog.i(TAG, "Non-xml file " + file + " in " + dir + " directory, ignoring");
+                continue;
+            }
+            if (!file.canRead()) {
+                Slog.w(TAG, "Default permissions file " + file + " cannot be read");
+                continue;
+            }
+            try (
+                InputStream str = new BufferedInputStream(new FileInputStream(file))
+            ) {
+                XmlPullParser parser = Xml.newPullParser();
+                parser.setInput(str, null);
+                parse(parser, grantExceptions);
+            } catch (XmlPullParserException | IOException e) {
+                Slog.w(TAG, "Error reading default permissions file " + file, e);
+            }
+        }
+
+        return grantExceptions;
+    }
+
+    private void parse(XmlPullParser parser, Map<String, List<DefaultPermissionGrant>>
+            outGrantExceptions) throws IOException, XmlPullParserException {
+        final int outerDepth = parser.getDepth();
+        int type;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && (type != XmlPullParser.END_TAG || parser.getDepth() > outerDepth)) {
+            if (type == XmlPullParser.END_TAG || type == XmlPullParser.TEXT) {
+                continue;
+            }
+            if (TAG_EXCEPTIONS.equals(parser.getName())) {
+                parseExceptions(parser, outGrantExceptions);
+            } else {
+                Log.e(TAG, "Unknown tag " + parser.getName());
+            }
+        }
+    }
+
+    private void parseExceptions(XmlPullParser parser, Map<String, List<DefaultPermissionGrant>>
+            outGrantExceptions) throws IOException, XmlPullParserException {
+        final int outerDepth = parser.getDepth();
+        int type;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && (type != XmlPullParser.END_TAG || parser.getDepth() > outerDepth)) {
+            if (type == XmlPullParser.END_TAG || type == XmlPullParser.TEXT) {
+                continue;
+            }
+            if (TAG_EXCEPTION.equals(parser.getName())) {
+                String packageName = parser.getAttributeValue(null, ATTR_PACKAGE);
+
+                List<DefaultPermissionGrant> packageExceptions =
+                        outGrantExceptions.get(packageName);
+                if (packageExceptions == null) {
+                    // The package must be on the system image
+                    PackageParser.Package pkg = getSystemPackageLPr(packageName);
+                    if (pkg == null) {
+                        Log.w(TAG, "Unknown package:" + packageName);
+                        XmlUtils.skipCurrentTag(parser);
+                        continue;
+                    }
+
+                    // The package must support runtime permissions
+                    if (!doesPackageSupportRuntimePermissions(pkg)) {
+                        Log.w(TAG, "Skipping non supporting runtime permissions package:"
+                                + packageName);
+                        XmlUtils.skipCurrentTag(parser);
+                        continue;
+                    }
+                    packageExceptions = new ArrayList<>();
+                    outGrantExceptions.put(packageName, packageExceptions);
+                }
+
+                parsePermission(parser, packageExceptions);
+            } else {
+                Log.e(TAG, "Unknown tag " + parser.getName() + "under <exceptions>");
+            }
+        }
+    }
+
+    private void parsePermission(XmlPullParser parser, List<DefaultPermissionGrant>
+            outPackageExceptions) throws IOException, XmlPullParserException {
+        final int outerDepth = parser.getDepth();
+        int type;
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && (type != XmlPullParser.END_TAG || parser.getDepth() > outerDepth)) {
+            if (type == XmlPullParser.END_TAG || type == XmlPullParser.TEXT) {
+                continue;
+            }
+
+            if (TAG_PERMISSION.contains(parser.getName())) {
+                String name = parser.getAttributeValue(null, ATTR_NAME);
+                if (name == null) {
+                    Log.w(TAG, "Mandatory name attribute missing for permission tag");
+                    XmlUtils.skipCurrentTag(parser);
+                    continue;
+                }
+
+                final boolean fixed = XmlUtils.readBooleanAttribute(parser, ATTR_FIXED);
+
+                DefaultPermissionGrant exception = new DefaultPermissionGrant(name, fixed);
+                outPackageExceptions.add(exception);
+            } else {
+                Log.e(TAG, "Unknown tag " + parser.getName() + "under <exception>");
+            }
+        }
+    }
+
     private static boolean doesPackageSupportRuntimePermissions(PackageParser.Package pkg) {
         return pkg.applicationInfo.targetSdkVersion > Build.VERSION_CODES.LOLLIPOP_MR1;
+    }
+
+    private static final class DefaultPermissionGrant {
+        final String name;
+        final boolean fixed;
+
+        public DefaultPermissionGrant(String name, boolean fixed) {
+            this.name = name;
+            this.fixed = fixed;
+        }
     }
 }
