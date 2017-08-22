@@ -31,7 +31,8 @@ import android.util.SparseIntArray;
 import android.widget.Toast;
 import com.android.internal.R;
 import com.android.internal.annotations.VisibleForTesting;
-import com.android.internal.logging.MetricsProto.MetricsEvent;
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
+import com.android.internal.notification.SystemNotificationChannels;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
@@ -39,11 +40,12 @@ import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 public class NetworkNotificationManager {
 
+
     public static enum NotificationType {
-        LOST_INTERNET(MetricsEvent.NOTIFICATION_NETWORK_LOST_INTERNET),
-        NETWORK_SWITCH(MetricsEvent.NOTIFICATION_NETWORK_SWITCH),
-        NO_INTERNET(MetricsEvent.NOTIFICATION_NETWORK_NO_INTERNET),
-        SIGN_IN(MetricsEvent.NOTIFICATION_NETWORK_SIGN_IN);
+        LOST_INTERNET(SystemMessage.NOTE_NETWORK_LOST_INTERNET),
+        NETWORK_SWITCH(SystemMessage.NOTE_NETWORK_SWITCH),
+        NO_INTERNET(SystemMessage.NOTE_NETWORK_NO_INTERNET),
+        SIGN_IN(SystemMessage.NOTE_NETWORK_SIGN_IN);
 
         public final int eventId;
 
@@ -187,7 +189,9 @@ public class NetworkNotificationManager {
             return;
         }
 
-        Notification.Builder builder = new Notification.Builder(mContext)
+        final String channelId = highPriority ? SystemNotificationChannels.NETWORK_ALERTS :
+                SystemNotificationChannels.NETWORK_STATUS;
+        Notification.Builder builder = new Notification.Builder(mContext, channelId)
                 .setWhen(System.currentTimeMillis())
                 .setShowWhen(notifyType == NotificationType.NETWORK_SWITCH)
                 .setSmallIcon(icon)
@@ -198,16 +202,16 @@ public class NetworkNotificationManager {
                 .setContentTitle(title)
                 .setContentIntent(intent)
                 .setLocalOnly(true)
-                .setPriority(highPriority ?
-                        Notification.PRIORITY_HIGH :
-                        Notification.PRIORITY_DEFAULT)
-                .setDefaults(highPriority ? Notification.DEFAULT_ALL : 0)
                 .setOnlyAlertOnce(true);
 
         if (notifyType == NotificationType.NETWORK_SWITCH) {
             builder.setStyle(new Notification.BigTextStyle().bigText(details));
         } else {
             builder.setContentText(details);
+        }
+
+        if (notifyType == NotificationType.SIGN_IN) {
+            builder.extend(new Notification.TvExtender().setChannelId(channelId));
         }
 
         Notification notification = builder.build();

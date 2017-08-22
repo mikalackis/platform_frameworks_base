@@ -285,6 +285,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
                 int activeColorMode) {
             List<Integer> pendingColorModes = new ArrayList<>();
 
+            if (colorModes == null) return false;
             // Build an updated list of all existing color modes.
             boolean colorModesAdded = false;
             for (int colorMode: colorModes) {
@@ -667,7 +668,7 @@ final class LocalDisplayAdapter extends DisplayAdapter {
 
     private final class HotplugDisplayEventReceiver extends DisplayEventReceiver {
         public HotplugDisplayEventReceiver(Looper looper) {
-            super(looper);
+            super(looper, VSYNC_SOURCE_APP);
         }
 
         @Override

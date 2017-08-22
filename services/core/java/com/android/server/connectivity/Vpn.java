@@ -27,6 +27,8 @@ import android.annotation.Nullable;
 import android.annotation.UserIdInt;
 import android.app.AppGlobals;
 import android.app.AppOpsManager;
+import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -76,12 +78,17 @@ import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
+import com.android.internal.R;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.internal.net.LegacyVpnInfo;
 import com.android.internal.net.VpnConfig;
 import com.android.internal.net.VpnInfo;
 import com.android.internal.net.VpnProfile;
+import com.android.internal.notification.SystemNotificationChannels;
+import com.android.server.DeviceIdleController;
+import com.android.server.LocalServices;
 import com.android.server.net.BaseNetworkObserver;
 
 import libcore.io.IoUtils;
@@ -111,6 +118,10 @@ public class Vpn {
     private static final String NETWORKTYPE = "VPN";
     private static final String TAG = "Vpn";
     private static final boolean LOGD = true;
+
+    // Length of time (in milliseconds) that an app hosting an always-on VPN is placed on
+    // the device idle whitelist during service launch and VPN bootstrap.
+    private static final long VPN_LAUNCH_IDLE_WHITELIST_DURATION = 60 * 1000;
 
     // TODO: create separate trackers for each unique VPN to support
     // automated reconnection
@@ -241,12 +252,14 @@ public class Vpn {
     /**
      * Update current state, dispaching event to listeners.
      */
-    private void updateState(DetailedState detailedState, String reason) {
+    @VisibleForTesting
+    protected void updateState(DetailedState detailedState, String reason) {
         if (LOGD) Log.d(TAG, "setting state=" + detailedState + ", reason=" + reason);
         mNetworkInfo.setDetailedState(detailedState, reason, null);
         if (mNetworkAgent != null) {
             mNetworkAgent.sendNetworkInfo(mNetworkInfo);
         }
+        updateAlwaysOnNotification(detailedState);
     }
 
     /**
@@ -280,7 +293,10 @@ public class Vpn {
         }
 
         mLockdown = (mAlwaysOn && lockdown);
-        if (!isCurrentPreparedPackage(packageName)) {
+        if (isCurrentPreparedPackage(packageName)) {
+            updateAlwaysOnNotification(mNetworkInfo.getDetailedState());
+        } else {
+            // Prepare this app. The notification will update as a side-effect of updateState().
             prepareInternal(packageName);
         }
         maybeRegisterPackageChangeReceiverLocked(packageName);
@@ -381,14 +397,26 @@ public class Vpn {
             }
         }
 
-        // Start the VPN service declared in the app's manifest.
-        Intent serviceIntent = new Intent(VpnConfig.SERVICE_INTERFACE);
-        serviceIntent.setPackage(alwaysOnPackage);
+        // Tell the OS that background services in this app need to be allowed for
+        // a short time, so we can bootstrap the VPN service.
+        final long oldId = Binder.clearCallingIdentity();
         try {
-            return mContext.startServiceAsUser(serviceIntent, UserHandle.of(mUserHandle)) != null;
-        } catch (RuntimeException e) {
-            Log.e(TAG, "VpnService " + serviceIntent + " failed to start", e);
-            return false;
+            DeviceIdleController.LocalService idleController =
+                    LocalServices.getService(DeviceIdleController.LocalService.class);
+            idleController.addPowerSaveTempWhitelistApp(Process.myUid(), alwaysOnPackage,
+                    VPN_LAUNCH_IDLE_WHITELIST_DURATION, mUserHandle, false, "vpn");
+
+            // Start the VPN service declared in the app's manifest.
+            Intent serviceIntent = new Intent(VpnConfig.SERVICE_INTERFACE);
+            serviceIntent.setPackage(alwaysOnPackage);
+            try {
+                return mContext.startServiceAsUser(serviceIntent, UserHandle.of(mUserHandle)) != null;
+            } catch (RuntimeException e) {
+                Log.e(TAG, "VpnService " + serviceIntent + " failed to start", e);
+                return false;
+            }
+        } finally {
+            Binder.restoreCallingIdentity(oldId);
         }
     }
 
@@ -682,22 +710,19 @@ public class Vpn {
         }
     }
 
-    private void agentDisconnect(NetworkInfo networkInfo, NetworkAgent networkAgent) {
-        networkInfo.setIsAvailable(false);
-        networkInfo.setDetailedState(DetailedState.DISCONNECTED, null, null);
+    private void agentDisconnect(NetworkAgent networkAgent) {
         if (networkAgent != null) {
+            NetworkInfo networkInfo = new NetworkInfo(mNetworkInfo);
+            networkInfo.setIsAvailable(false);
+            networkInfo.setDetailedState(DetailedState.DISCONNECTED, null, null);
             networkAgent.sendNetworkInfo(networkInfo);
         }
     }
 
-    private void agentDisconnect(NetworkAgent networkAgent) {
-        NetworkInfo networkInfo = new NetworkInfo(mNetworkInfo);
-        agentDisconnect(networkInfo, networkAgent);
-    }
-
     private void agentDisconnect() {
         if (mNetworkInfo.isConnected()) {
-            agentDisconnect(mNetworkInfo, mNetworkAgent);
+            mNetworkInfo.setIsAvailable(false);
+            updateState(DetailedState.DISCONNECTED, "agentDisconnect");
             mNetworkAgent = null;
         }
     }
@@ -1247,6 +1272,43 @@ public class Vpn {
                 }
             }
             return false;
+        }
+    }
+
+    private void updateAlwaysOnNotification(DetailedState networkState) {
+        final boolean visible = (mAlwaysOn && networkState != DetailedState.CONNECTED);
+        updateAlwaysOnNotificationInternal(visible);
+    }
+
+    @VisibleForTesting
+    protected void updateAlwaysOnNotificationInternal(boolean visible) {
+        final UserHandle user = UserHandle.of(mUserHandle);
+        final long token = Binder.clearCallingIdentity();
+        try {
+            final NotificationManager notificationManager = NotificationManager.from(mContext);
+            if (!visible) {
+                notificationManager.cancelAsUser(TAG, SystemMessage.NOTE_VPN_DISCONNECTED, user);
+                return;
+            }
+            final Intent intent = new Intent(Settings.ACTION_VPN_SETTINGS);
+            final PendingIntent configIntent = PendingIntent.getActivityAsUser(
+                    mContext, /* request */ 0, intent,
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT,
+                    null, user);
+            final Notification.Builder builder =
+                    new Notification.Builder(mContext, SystemNotificationChannels.VPN)
+                            .setSmallIcon(R.drawable.vpn_connected)
+                            .setContentTitle(mContext.getString(R.string.vpn_lockdown_disconnected))
+                            .setContentText(mContext.getString(R.string.vpn_lockdown_config))
+                            .setContentIntent(configIntent)
+                            .setCategory(Notification.CATEGORY_SYSTEM)
+                            .setVisibility(Notification.VISIBILITY_PUBLIC)
+                            .setOngoing(true)
+                            .setColor(mContext.getColor(R.color.system_notification_accent_color));
+            notificationManager.notifyAsUser(TAG, SystemMessage.NOTE_VPN_DISCONNECTED,
+                    builder.build(), user);
+        } finally {
+            Binder.restoreCallingIdentity(token);
         }
     }
 

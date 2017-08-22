@@ -236,26 +236,27 @@ public class DisconnectCause {
     /**
      * The call being placed was detected as a call forwarding number and was being dialed while
      * roaming on a carrier that does not allow this.
-     * @hide
      */
     public static final int DIALED_CALL_FORWARDING_WHILE_ROAMING = 57;
 
+    /**
+     * The network does not accept the emergency call request because IMEI was used as
+     * identification and this cability is not supported by the network.
+     * {@hide}
+     */
+    public static final int IMEI_NOT_ACCEPTED = 58;
+
+    /**
+     * A call over WIFI was disconnected because the WIFI signal was lost or became too degraded to
+     * continue the call.
+     */
+    public static final int WIFI_LOST = 59;
+
     //*********************************************************************************************
     // When adding a disconnect type:
-    // 1) Please assign the new type the next id value below.
-    // 2) Increment the next id value below to a new value.
-    // 3) Update MAXIMUM_VALID_VALUE to the new disconnect type.
-    // 4) Update toString() with the newly added disconnect type.
-    // 5) Update android.telecom.DisconnectCauseUtil with any mappings to a telecom.DisconnectCause.
-    //
-    // NextId: 58
+    // 1) Update toString() with the newly added disconnect type.
+    // 2) Update android.telecom.DisconnectCauseUtil with any mappings to a telecom.DisconnectCause.
     //*********************************************************************************************
-
-    /** Smallest valid value for call disconnect codes. */
-    public static final int MINIMUM_VALID_VALUE = NOT_DISCONNECTED;
-
-    /** Largest valid value for call disconnect codes. */
-    public static final int MAXIMUM_VALID_VALUE = DIALED_CALL_FORWARDING_WHILE_ROAMING;
 
     /** Private constructor to avoid class instantiation. */
     private DisconnectCause() {
@@ -379,6 +380,10 @@ public class DisconnectCause {
             return "DIALED_ON_WRONG_SLOT";
         case DIALED_CALL_FORWARDING_WHILE_ROAMING:
             return "DIALED_CALL_FORWARDING_WHILE_ROAMING";
+        case IMEI_NOT_ACCEPTED:
+            return "IMEI_NOT_ACCEPTED";
+        case WIFI_LOST:
+            return "WIFI_LOST";
         default:
             return "INVALID: " + cause;
         }

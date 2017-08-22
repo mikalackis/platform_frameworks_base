@@ -104,7 +104,10 @@ public final class PhoneAccount implements Parcelable {
     public static final int CAPABILITY_SIM_SUBSCRIPTION = 0x4;
 
     /**
-     * Flag indicating that this {@code PhoneAccount} is capable of placing video calls.
+     * Flag indicating that this {@code PhoneAccount} is currently able to place video calls.
+     * <p>
+     * See also {@link #CAPABILITY_SUPPORTS_VIDEO_CALLING} which indicates whether the
+     * {@code PhoneAccount} supports placing video calls.
      * <p>
      * See {@link #getCapabilities}
      */
@@ -167,6 +170,50 @@ public final class PhoneAccount implements Parcelable {
      * @hide
      */
     public static final int CAPABILITY_EMERGENCY_VIDEO_CALLING = 0x200;
+
+    /**
+     * Flag indicating that this {@link PhoneAccount} supports video calling.
+     * This is not an indication that the {@link PhoneAccount} is currently able to make a video
+     * call, but rather that it has the ability to make video calls (but not necessarily at this
+     * time).
+     * <p>
+     * Whether a {@link PhoneAccount} can make a video call is ultimately controlled by
+     * {@link #CAPABILITY_VIDEO_CALLING}, which indicates whether the {@link PhoneAccount} is
+     * currently capable of making a video call.  Consider a case where, for example, a
+     * {@link PhoneAccount} supports making video calls (e.g.
+     * {@link #CAPABILITY_SUPPORTS_VIDEO_CALLING}), but a current lack of network connectivity
+     * prevents video calls from being made (e.g. {@link #CAPABILITY_VIDEO_CALLING}).
+     * <p>
+     * See {@link #getCapabilities}
+     */
+    public static final int CAPABILITY_SUPPORTS_VIDEO_CALLING = 0x400;
+
+    /**
+     * Flag indicating that this {@link PhoneAccount} is responsible for managing its own
+     * {@link Connection}s.  This type of {@link PhoneAccount} is ideal for use with standalone
+     * calling apps which do not wish to use the default phone app for {@link Connection} UX,
+     * but which want to leverage the call and audio routing capabilities of the Telecom framework.
+     * <p>
+     * When set, {@link Connection}s created by the self-managed {@link ConnectionService} will not
+     * be surfaced to implementations of the {@link InCallService} API.  Thus it is the
+     * responsibility of a self-managed {@link ConnectionService} to provide a user interface for
+     * its {@link Connection}s.
+     * <p>
+     * Self-managed {@link Connection}s will, however, be displayed on connected Bluetooth devices.
+     */
+    public static final int CAPABILITY_SELF_MANAGED = 0x800;
+
+    /**
+     * Flag indicating that this {@link PhoneAccount} is capable of making a call with an
+     * RTT (Real-time text) session.
+     * When set, Telecom will attempt to open an RTT session on outgoing calls that specify
+     * that they should be placed with an RTT session , and the in-call app will be displayed
+     * with text entry fields for RTT. Likewise, the in-call app can request that an RTT
+     * session be opened during a call if this bit is set.
+     */
+    public static final int CAPABILITY_RTT = 0x1000;
+
+    /* NEXT CAPABILITY: 0x2000 */
 
     /**
      * URI scheme for telephone number URIs.
@@ -260,6 +307,18 @@ public final class PhoneAccount implements Parcelable {
             mExtras = phoneAccount.getExtras();
             mGroupId = phoneAccount.getGroupId();
             mSupportedAudioRoutes = phoneAccount.getSupportedAudioRoutes();
+        }
+
+        /**
+         * Sets the label. See {@link PhoneAccount#getLabel()}.
+         *
+         * @param label The label of the phone account.
+         * @return The builder.
+         * @hide
+         */
+        public Builder setLabel(CharSequence label) {
+            this.mLabel = label;
+            return this;
         }
 
         /**
@@ -672,6 +731,14 @@ public final class PhoneAccount implements Parcelable {
         mIsEnabled = isEnabled;
     }
 
+    /**
+     * @return {@code true} if the {@link PhoneAccount} is self-managed, {@code false} otherwise.
+     * @hide
+     */
+    public boolean isSelfManaged() {
+        return (mCapabilities & CAPABILITY_SELF_MANAGED) == CAPABILITY_SELF_MANAGED;
+    }
+
     //
     // Parcelable implementation
     //
@@ -795,6 +862,12 @@ public final class PhoneAccount implements Parcelable {
      */
     private String capabilitiesToString() {
         StringBuilder sb = new StringBuilder();
+        if (hasCapabilities(CAPABILITY_SELF_MANAGED)) {
+            sb.append("SelfManaged ");
+        }
+        if (hasCapabilities(CAPABILITY_SUPPORTS_VIDEO_CALLING)) {
+            sb.append("SuppVideo ");
+        }
         if (hasCapabilities(CAPABILITY_VIDEO_CALLING)) {
             sb.append("Video ");
         }
