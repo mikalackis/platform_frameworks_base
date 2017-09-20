@@ -277,13 +277,22 @@ public class GestureLauncherService extends SystemService {
         // Reset back key state for long press
         intercept = false;
 
+        doubleTapInterval = event.getEventTime() - mLastPowerDown;
+        if(doubleTapInterval>DEFAULT_MULTI_PRESS_TIMEOUT){
+            intercept = false;
+            launched = false;
+            numberOfTaps=0;
+            mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
+        }
+
         // Cancel multi-press detection timeout.
         if (numberOfTaps != 0) {
             Slog.i(TAG, "Another tap detected, removing handler message");
             mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
+            intercept = false;
         }
 
-        numberOfTaps++;
+        ++numberOfTaps;
 
         Slog.i(TAG, "Current number of taps: "+numberOfTaps);
 
@@ -296,12 +305,16 @@ public class GestureLauncherService extends SystemService {
             msg.setAsynchronous(true);
             mHandler.sendMessageDelayed(msg, DEFAULT_MULTI_PRESS_TIMEOUT);
 
+            launched = true;
+
             intercept = true;
         }
 
-        Slog.i(TAG, "Return value for PhoneWindowManager: "+(intercept && interactive));
+        mLastPowerDown = event.getDownTime();
 
-        return intercept && interactive;
+        Slog.i(TAG, "Return value for PhoneWindowManager: "+intercept);
+        outLaunched.value = intercept;
+        return intercept;
     }
 
     public boolean interceptPowerKeyDownBACKUP(KeyEvent event, boolean interactive) {
@@ -350,7 +363,7 @@ public class GestureLauncherService extends SystemService {
                 }
             }, 300);
         }
-        outLaunched.value = launched;
+        //outLaunched.value = launched;
         return intercept && launched;
     }
 
@@ -494,7 +507,7 @@ public class GestureLauncherService extends SystemService {
             launched = handleCameraLaunchGesture(false /* useWakelock */,
                     StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
             if (launched) {
-                MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
+                MetricsLogger.action(mContext, MetricsEvent.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
                         (int) doubleTapInterval);
             }
         }
