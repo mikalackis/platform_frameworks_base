@@ -29,6 +29,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Handler;
+import android.os.Message;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.os.SystemClock;
@@ -48,6 +49,7 @@ import ariel.providers.ArielSettings;
  * accordingly.
  * <p>For now, only camera launch gesture is supported, and in the future, more gestures can be
  * added.</p>
+ *
  * @hide
  */
 public class GestureLauncherService extends SystemService {
@@ -61,22 +63,37 @@ public class GestureLauncherService extends SystemService {
     private static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 300;
     private static final long CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS = 120;
 
-    /** The listener that receives the gesture event. */
+    private static final int CAMERA_COUNT = 2;
+
+    private static final int ARIEL_PANIC_MODE_COUNT = 5;
+    private static final long DEFAULT_MULTI_PRESS_TIMEOUT = 300;
+
+    private static final int MSG_POWER_DELAYED_PRESS = 20;
+
+    /**
+     * The listener that receives the gesture event.
+     */
     private final GestureEventListener mGestureListener = new GestureEventListener();
 
     private Sensor mCameraLaunchSensor;
     private Context mContext;
 
-    /** The wake lock held when a gesture is detected. */
+    /**
+     * The wake lock held when a gesture is detected.
+     */
     private WakeLock mWakeLock;
     private boolean mRegistered;
     private int mUserId;
 
     // Below are fields used for event logging only.
-    /** Elapsed real time when the camera gesture is turned on. */
+    /**
+     * Elapsed real time when the camera gesture is turned on.
+     */
     private long mCameraGestureOnTimeMs = 0L;
 
-    /** Elapsed real time when the last camera gesture was detected. */
+    /**
+     * Elapsed real time when the last camera gesture was detected.
+     */
     private long mCameraGestureLastEventTime = 0L;
 
     /**
@@ -194,7 +211,7 @@ public class GestureLauncherService extends SystemService {
         if (cameraLaunchGestureId != -1) {
             mRegistered = false;
             String sensorName = resources.getString(
-                com.android.internal.R.string.config_cameraLaunchGestureSensorStringType);
+                    com.android.internal.R.string.config_cameraLaunchGestureSensorStringType);
             mCameraLaunchSensor = sensorManager.getDefaultSensor(
                     cameraLaunchGestureId,
                     true /*wakeUp*/);
@@ -208,7 +225,7 @@ public class GestureLauncherService extends SystemService {
                             mCameraLaunchSensor, 0);
                 } else {
                     String message = String.format("Wrong configuration. Sensor type and sensor "
-                            + "string type don't match: %s in resources, %s in the sensor.",
+                                    + "string type don't match: %s in resources, %s in the sensor.",
                             sensorName, mCameraLaunchSensor.getStringType());
                     throw new RuntimeException(message);
                 }
@@ -222,13 +239,13 @@ public class GestureLauncherService extends SystemService {
     public static boolean isCameraLaunchSettingEnabled(Context context, int userId) {
         return isCameraLaunchEnabled(context.getResources())
                 && (Settings.Secure.getIntForUser(context.getContentResolver(),
-                        Settings.Secure.CAMERA_GESTURE_DISABLED, 0, userId) == 0);
+                Settings.Secure.CAMERA_GESTURE_DISABLED, 0, userId) == 0);
     }
 
     public static boolean isCameraDoubleTapPowerSettingEnabled(Context context, int userId) {
         return isCameraDoubleTapPowerEnabled(context.getResources())
                 && (Settings.Secure.getIntForUser(context.getContentResolver(),
-                        Settings.Secure.CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED, 0, userId) == 0);
+                Settings.Secure.CAMERA_DOUBLE_TAP_POWER_GESTURE_DISABLED, 0, userId) == 0);
     }
 
     /**
@@ -256,10 +273,41 @@ public class GestureLauncherService extends SystemService {
     boolean launched = false;
     boolean intercept = false;
     int numberOfTaps;
-    Handler mHandler = new Handler();
+    Handler mHandler = new PolicyHandler();
     long doubleTapInterval;
 
     public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive) {
+        // Reset back key state for long press
+        intercept = false;
+
+        // Cancel multi-press detection timeout.
+        if (numberOfTaps != 0) {
+            Slog.i(TAG, "Another tap detected, removing handler message");
+            mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
+        }
+
+        numberOfTaps++;
+
+        Slog.i(TAG, "Current number of taps: "+numberOfTaps);
+
+        final long eventTime = event.getDownTime();
+
+        if (numberOfTaps == CAMERA_COUNT || numberOfTaps >= ARIEL_PANIC_MODE_COUNT) {
+            // This could be a multi-press.  Wait a little bit longer to confirm.
+            Message msg = mHandler.obtainMessage(MSG_POWER_DELAYED_PRESS,
+                    numberOfTaps, 0, eventTime);
+            msg.setAsynchronous(true);
+            mHandler.sendMessageDelayed(msg, DEFAULT_MULTI_PRESS_TIMEOUT);
+
+            intercept = true;
+        }
+
+        Slog.i(TAG, "Return value for PhoneWindowManager: "+(intercept && interactive));
+
+        return intercept && interactive;
+    }
+
+    public boolean interceptPowerKeyDownBACKUP(KeyEvent event, boolean interactive) {
 
         synchronized (this) {
             doubleTapInterval = event.getEventTime() - mLastPowerDown;
@@ -269,8 +317,7 @@ public class GestureLauncherService extends SystemService {
                 launched = true;
                 intercept = interactive;
                 numberOfTaps += 1;
-            }
-            else{
+            } else {
                 numberOfTaps = 1;
                 launched = false;
                 intercept = false;
@@ -278,15 +325,14 @@ public class GestureLauncherService extends SystemService {
             }
             mLastPowerDown = event.getEventTime();
         }
-        if(numberOfTaps == 3){
+        if (numberOfTaps == 3) {
             Log.i(TAG, "DETECTED 3 TAPS");
             mHandler.removeCallbacksAndMessages(null);
             ArielSettings.Secure.putInt(mContext.getContentResolver(),
                     ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
                     ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC);
             numberOfTaps = 0;
-        }
-        else if(numberOfTaps == 2){
+        } else if (numberOfTaps == 2) {
             mHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -360,8 +406,8 @@ public class GestureLauncherService extends SystemService {
         @Override
         public void onSensorChanged(SensorEvent event) {
             if (!mRegistered) {
-              if (DBG) Slog.d(TAG, "Ignoring gesture event because it's unregistered.");
-              return;
+                if (DBG) Slog.d(TAG, "Ignoring gesture event because it's unregistered.");
+                return;
             }
             if (event.sensor == mCameraLaunchSensor) {
                 if (DBG) {
@@ -411,7 +457,7 @@ public class GestureLauncherService extends SystemService {
             }
 
             if (DBG) Slog.d(TAG, String.format("totalDuration: %d, sensor1OnTime: %s, " +
-                    "sensor2OnTime: %d, extra: %d",
+                            "sensor2OnTime: %d, extra: %d",
                     gestureOnTimeDiff,
                     sensor1OnTimeDiff,
                     sensor2OnTimeDiff,
@@ -427,5 +473,41 @@ public class GestureLauncherService extends SystemService {
             mCameraGestureSensor2LastOnTimeMs = sensor2OnTime;
             mCameraLaunchLastEventExtra = extra;
         }
+    }
+
+    private class PolicyHandler extends Handler {
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case MSG_POWER_DELAYED_PRESS:
+                    backMultiPressAction((Long) msg.obj, msg.arg1);
+                    finishBackKeyPress();
+                    break;
+            }
+        }
+    }
+
+    private void backMultiPressAction(long eventTime, int count) {
+        if(count == CAMERA_COUNT){
+            // start camera
+            Slog.i(TAG, "Power button double tap gesture detected, launching camera");
+            launched = handleCameraLaunchGesture(false /* useWakelock */,
+                    StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
+            if (launched) {
+                MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
+                        (int) doubleTapInterval);
+            }
+        }
+        else if(count >= ARIEL_PANIC_MODE_COUNT){
+            Slog.i(TAG, "Ariel panic mode power button count detected!");
+            // activate panic
+            ArielSettings.Secure.putInt(mContext.getContentResolver(),
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
+                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC);
+        }
+    }
+
+    private void finishBackKeyPress() {
+        numberOfTaps = 0;
     }
 }
