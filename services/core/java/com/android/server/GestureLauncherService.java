@@ -49,7 +49,6 @@ import ariel.providers.ArielSettings;
  * accordingly.
  * <p>For now, only camera launch gesture is supported, and in the future, more gestures can be
  * added.</p>
- *
  * @hide
  */
 public class GestureLauncherService extends SystemService {
@@ -63,37 +62,22 @@ public class GestureLauncherService extends SystemService {
     private static final long CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS = 300;
     private static final long CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS = 120;
 
-    private static final int CAMERA_COUNT = 2;
-
-    private static final int ARIEL_PANIC_MODE_COUNT = 5;
-    private static final long DEFAULT_MULTI_PRESS_TIMEOUT = 300;
-
-    private static final int MSG_POWER_DELAYED_PRESS = 20;
-
-    /**
-     * The listener that receives the gesture event.
-     */
+    /** The listener that receives the gesture event. */
     private final GestureEventListener mGestureListener = new GestureEventListener();
 
     private Sensor mCameraLaunchSensor;
     private Context mContext;
 
-    /**
-     * The wake lock held when a gesture is detected.
-     */
+    /** The wake lock held when a gesture is detected. */
     private WakeLock mWakeLock;
     private boolean mRegistered;
     private int mUserId;
 
     // Below are fields used for event logging only.
-    /**
-     * Elapsed real time when the camera gesture is turned on.
-     */
+    /** Elapsed real time when the camera gesture is turned on. */
     private long mCameraGestureOnTimeMs = 0L;
 
-    /**
-     * Elapsed real time when the last camera gesture was detected.
-     */
+    /** Elapsed real time when the last camera gesture was detected. */
     private long mCameraGestureLastEventTime = 0L;
 
     /**
@@ -124,6 +108,12 @@ public class GestureLauncherService extends SystemService {
      */
     private boolean mCameraDoubleTapPowerEnabled;
     private long mLastPowerDown;
+
+    private static final int MSG_POWER_DELAYED_PRESS = 20;
+    private static final int CAMERA_COUNT = 2;
+    private static final int ARIEL_PANIC_MODE_COUNT = 5;
+
+    private static final long DEFAULT_MULTI_PRESS_TIMEOUT = 300;
 
     public GestureLauncherService(Context context) {
         super(context);
@@ -277,80 +267,36 @@ public class GestureLauncherService extends SystemService {
     long doubleTapInterval;
 
     public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive) {
-        // Reset back key state for long press
-        intercept = false;
-
-        // Cancel multi-press detection timeout.
-        if (numberOfTaps != 0) {
-            Slog.i(TAG, "Another tap detected, removing handler message");
-            mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
-        }
-
-        numberOfTaps++;
-
-        Slog.i(TAG, "Current number of taps: "+numberOfTaps);
-
-        final long eventTime = event.getDownTime();
-
-        if (numberOfTaps == CAMERA_COUNT || numberOfTaps >= ARIEL_PANIC_MODE_COUNT) {
-            // This could be a multi-press.  Wait a little bit longer to confirm.
-            Message msg = mHandler.obtainMessage(MSG_POWER_DELAYED_PRESS,
-                    numberOfTaps, 0, eventTime);
-            msg.setAsynchronous(true);
-            mHandler.sendMessageDelayed(msg, DEFAULT_MULTI_PRESS_TIMEOUT);
-
-            intercept = true;
-        }
-
-        Slog.i(TAG, "Return value for PhoneWindowManager: "+(intercept && interactive));
-
-        return intercept && interactive;
-    }
-
-    public boolean interceptPowerKeyDownBACKUP(KeyEvent event, boolean interactive) {
-
         synchronized (this) {
+            // remove any pending messages because there is a new tap
+            // that can change everything
+            Slog.d(TAG, "Removing pending messages");
+            mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
+
             doubleTapInterval = event.getEventTime() - mLastPowerDown;
             if (mCameraDoubleTapPowerEnabled
                     && doubleTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS
                     && doubleTapInterval > CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS) {
+                Slog.d(TAG, "Tap detected in interval");
                 launched = true;
                 intercept = interactive;
                 numberOfTaps += 1;
-            } else {
+                // this could be a multitap, try to process it
+                Slog.d(TAG, "Register action check");
+                Message msg = mHandler.obtainMessage(MSG_POWER_DELAYED_PRESS,
+                        numberOfTaps, 0, event.getEventTime());
+                msg.setAsynchronous(true);
+                mHandler.sendMessageDelayed(msg, DEFAULT_MULTI_PRESS_TIMEOUT);
+            }
+            else{
+                Slog.d(TAG, "New tapping session");
                 numberOfTaps = 1;
                 launched = false;
                 intercept = false;
-                mHandler.removeCallbacksAndMessages(null);
             }
             mLastPowerDown = event.getEventTime();
         }
-        if (numberOfTaps == 3) {
-            Log.i(TAG, "DETECTED 3 TAPS");
-            mHandler.removeCallbacksAndMessages(null);
-            ArielSettings.Secure.putInt(mContext.getContentResolver(),
-                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
-                    ArielSettings.Secure.ARIEL_SYSTEM_STATUS_PANIC);
-            numberOfTaps = 0;
-        } else if (numberOfTaps == 2) {
-            mHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (launched) {
-                        Slog.i(TAG, "Power button double tap gesture detected, launching camera. Interval="
-                                + doubleTapInterval + "ms");
-                        launched = handleCameraLaunchGesture(false /* useWakelock */,
-                                StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
-                        if (launched) {
-                            MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
-                                    (int) doubleTapInterval);
-                        }
-                    }
-                    MetricsLogger.histogram(mContext, "power_double_tap_interval", (int) doubleTapInterval);
-                    numberOfTaps = 0;
-                }
-            }, 300);
-        }
+        Slog.d(TAG, "Return value: "+(intercept && launched));
         return intercept && launched;
     }
 
@@ -507,7 +453,10 @@ public class GestureLauncherService extends SystemService {
         }
     }
 
+
     private void finishBackKeyPress() {
         numberOfTaps = 0;
+        launched = false;
+        intercept = false;
     }
 }
