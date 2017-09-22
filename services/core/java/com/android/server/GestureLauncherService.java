@@ -115,6 +115,12 @@ public class GestureLauncherService extends SystemService {
 
     private static final long DEFAULT_MULTI_PRESS_TIMEOUT = 300;
 
+    private boolean mLaunched = false;
+    private boolean mIntercept = false;
+    private int mNumberOfTaps;
+    private Handler mHandler = new PolicyHandler();
+    private long mDoubleTapInterval;
+
     public GestureLauncherService(Context context) {
         super(context);
         mContext = context;
@@ -260,44 +266,38 @@ public class GestureLauncherService extends SystemService {
         return isCameraLaunchEnabled(resources) || isCameraDoubleTapPowerEnabled(resources);
     }
 
-    boolean launched = false;
-    boolean intercept = false;
-    int numberOfTaps;
-    Handler mHandler = new PolicyHandler();
-    long doubleTapInterval;
-
     public boolean interceptPowerKeyDown(KeyEvent event, boolean interactive) {
         synchronized (this) {
             // remove any pending messages because there is a new tap
             // that can change everything
-            Slog.d(TAG, "Removing pending messages");
+            if (DBG) Slog.d(TAG, "Removing pending messages");
             mHandler.removeMessages(MSG_POWER_DELAYED_PRESS);
 
-            doubleTapInterval = event.getEventTime() - mLastPowerDown;
+            mDoubleTapInterval = event.getEventTime() - mLastPowerDown;
             if (mCameraDoubleTapPowerEnabled
-                    && doubleTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS
-                    && doubleTapInterval > CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS) {
-                Slog.d(TAG, "Tap detected in interval");
-                launched = true;
-                intercept = interactive;
-                numberOfTaps += 1;
+                    && mDoubleTapInterval < CAMERA_POWER_DOUBLE_TAP_MAX_TIME_MS
+                    && mDoubleTapInterval > CAMERA_POWER_DOUBLE_TAP_MIN_TIME_MS) {
+                if (DBG) Slog.d(TAG, "Tap detected in interval");
+                mLaunched = true;
+                mIntercept = interactive;
+                mNumberOfTaps += 1;
                 // this could be a multitap, try to process it
-                Slog.d(TAG, "Register action check");
+                if (DBG) Slog.d(TAG, "Register action check");
                 Message msg = mHandler.obtainMessage(MSG_POWER_DELAYED_PRESS,
-                        numberOfTaps, 0, event.getEventTime());
+                        mNumberOfTaps, 0, event.getEventTime());
                 msg.setAsynchronous(true);
                 mHandler.sendMessageDelayed(msg, DEFAULT_MULTI_PRESS_TIMEOUT);
             }
             else{
-                Slog.d(TAG, "New tapping session");
-                numberOfTaps = 1;
-                launched = false;
-                intercept = false;
+                if (DBG) Slog.d(TAG, "New tapping session");
+                mNumberOfTaps = 1;
+                mLaunched = false;
+                mIntercept = false;
             }
             mLastPowerDown = event.getEventTime();
         }
-        Slog.d(TAG, "Return value: "+(intercept && launched));
-        return intercept && launched;
+        if (DBG) Slog.d(TAG, "Return value: "+(mIntercept && mLaunched));
+        return mIntercept && mLaunched;
     }
 
     /**
@@ -437,11 +437,11 @@ public class GestureLauncherService extends SystemService {
         if(count == CAMERA_COUNT){
             // start camera
             Slog.i(TAG, "Power button double tap gesture detected, launching camera");
-            launched = handleCameraLaunchGesture(false /* useWakelock */,
+            mLaunched = handleCameraLaunchGesture(false /* useWakelock */,
                     StatusBarManager.CAMERA_LAUNCH_SOURCE_POWER_DOUBLE_TAP);
-            if (launched) {
+            if (mLaunched) {
                 MetricsLogger.action(mContext, MetricsLogger.ACTION_DOUBLE_TAP_POWER_CAMERA_GESTURE,
-                        (int) doubleTapInterval);
+                        (int) mDoubleTapInterval);
             }
         }
         else if(count >= ARIEL_PANIC_MODE_COUNT){
@@ -453,10 +453,9 @@ public class GestureLauncherService extends SystemService {
         }
     }
 
-
     private void finishBackKeyPress() {
-        numberOfTaps = 0;
-        launched = false;
-        intercept = false;
+        mNumberOfTaps = 0;
+        mLaunched = false;
+        mIntercept = false;
     }
 }
