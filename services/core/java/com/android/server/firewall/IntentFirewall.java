@@ -47,7 +47,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import ariel.platform.Manifest;
 import android.app.ActivityManagerNative;
@@ -58,7 +60,7 @@ public class IntentFirewall {
     static final String TAG = "IntentFirewall";
 
     // e.g. /data/system/ifw or /data/secure/system/ifw
-    private static final File RULES_DIR = new File(Environment.getSystemSecureDirectory(), "ifw");
+    private static final File RULES_DIR = new File(Environment.getDataSystemDirectory(), "ifw");
 
     private static final int LOG_PACKAGES_MAX_LENGTH = 150;
     private static final int LOG_PACKAGES_SUFFICIENT_LENGTH = 125;
@@ -131,11 +133,12 @@ public class IntentFirewall {
      * It is assumed the caller is already holding the global ActivityManagerService lock.
      */
     public boolean checkStartActivity(Intent intent, int callerUid, int callerPid,
-                                      String resolvedType, ApplicationInfo resolvedApp) {
+            String resolvedType, ApplicationInfo resolvedApp) {
         boolean block = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
-        if(!block && ActivityManagerNative.isSystemReady()){
-            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        if (!block && ActivityManagerNative.isSystemReady()) {
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_ALL);
+            mAms.killApplication(resolvedApp.packageName, UserHandle.getAppId(resolvedApp.uid), UserHandle.USER_ALL, "IF block");
             Intent blockIntent = new Intent("ariel.intent.action.APPLICATION_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -143,7 +146,7 @@ public class IntentFirewall {
     }
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
-                                int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
+            int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
         boolean block = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
         if(!block && ActivityManagerNative.isSystemReady()){
@@ -156,7 +159,7 @@ public class IntentFirewall {
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
-                                  String resolvedType, int receivingUid) {
+            String resolvedType, int receivingUid) {
         boolean block = checkIntent(mBroadcastResolver, intent.getComponent(), TYPE_BROADCAST, intent,
                 callerUid, callerPid, resolvedType, receivingUid);
         if(!block && ActivityManagerNative.isSystemReady()){
@@ -167,8 +170,8 @@ public class IntentFirewall {
     }
 
     public boolean checkIntent(FirewallIntentResolver resolver, ComponentName resolvedComponent,
-                               int intentType, Intent intent, int callerUid, int callerPid, String resolvedType,
-                               int receivingUid) {
+            int intentType, Intent intent, int callerUid, int callerPid, String resolvedType,
+            int receivingUid) {
         boolean log = false;
         boolean block = false;
 
@@ -211,7 +214,7 @@ public class IntentFirewall {
     }
 
     private static void logIntent(int intentType, Intent intent, int callerUid,
-                                  String resolvedType) {
+            String resolvedType) {
         // The component shouldn't be null, but let's double check just to be safe
         ComponentName cn = intent.getComponent();
         String shortComponent = null;
@@ -554,7 +557,7 @@ public class IntentFirewall {
         }
     }
 
-    private static class FirewallIntentResolver
+    private class FirewallIntentResolver
             extends IntentResolver<FirewallIntentFilter, Rule> {
         @Override
         protected boolean allowFilterResult(FirewallIntentFilter filter, List<Rule> dest) {
@@ -599,6 +602,24 @@ public class IntentFirewall {
             Rule[] rules = mRulesByPackage.get(packageName);
             rules = ArrayUtils.appendElement(Rule.class, rules, rule);
             mRulesByPackage.put(packageName, rules);
+            // if the package is blocked
+            // kill the process immediately
+            if (rule.getBlock()) {
+                IPackageManager pm = AppGlobals.getPackageManager();
+                if(pm!=null){
+                    ApplicationInfo applicationInfo = null;
+                    try {
+                        applicationInfo = pm.getApplicationInfo(packageName, 0, UserHandle.USER_SYSTEM);
+                        if (applicationInfo != null) {
+                            mAms.killApplication(packageName,
+                                    UserHandle.getAppId(applicationInfo.uid),
+                                    UserHandle.USER_SYSTEM, "IF block");
+                        }
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
         }
 
         public void queryByPackage(String packageName, List<Rule> candidateRules) {
@@ -661,11 +682,13 @@ public class IntentFirewall {
      */
     public interface AMSInterface {
         int checkComponentPermission(String permission, int pid, int uid,
-                                     int owningUid, boolean exported);
+                int owningUid, boolean exported);
         Object getAMSLock();
         Context getContext();
 
         void removeTasksByPackageNameLocked(String packageName, int userId);
+
+        void killApplication(String pkg, int appId, int userId, String reason);
     }
 
     /**
@@ -679,7 +702,7 @@ public class IntentFirewall {
      * @return True if the caller can access the described component
      */
     boolean checkComponentPermission(String permission, int pid, int uid, int owningUid,
-                                     boolean exported) {
+            boolean exported) {
         return mAms.checkComponentPermission(permission, pid, uid, owningUid, exported) ==
                 PackageManager.PERMISSION_GRANTED;
     }
