@@ -7094,8 +7094,8 @@ public final class ActivityManagerService extends ActivityManagerNative
         }
 
         @Override
-        public void killApplication(String pkg, int appId, int userId, String reason) {
-            ActivityManagerService.this.killApplication(pkg, appId, userId, reason);
+        public void killApplicationWithAppId(String pkg, int appId, String reason) {
+            ActivityManagerService.this.killApplicationWithAppId(pkg, appId, reason);
         }
     }
 

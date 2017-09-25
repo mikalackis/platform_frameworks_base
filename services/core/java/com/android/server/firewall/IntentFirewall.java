@@ -47,9 +47,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 import ariel.platform.Manifest;
 import android.app.ActivityManagerNative;
@@ -60,7 +58,7 @@ public class IntentFirewall {
     static final String TAG = "IntentFirewall";
 
     // e.g. /data/system/ifw or /data/secure/system/ifw
-    private static final File RULES_DIR = new File(Environment.getDataSystemDirectory(), "ifw");
+    private static final File RULES_DIR = new File(Environment.getSystemSecureDirectory(), "ifw");
 
     private static final int LOG_PACKAGES_MAX_LENGTH = 150;
     private static final int LOG_PACKAGES_SUFFICIENT_LENGTH = 125;
@@ -138,7 +136,7 @@ public class IntentFirewall {
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
         if (!block && ActivityManagerNative.isSystemReady()) {
             mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_ALL);
-            mAms.killApplication(resolvedApp.packageName, UserHandle.getAppId(resolvedApp.uid), UserHandle.USER_ALL, "IF block");
+            mAms.killApplicationWithAppId(resolvedApp.packageName, UserHandle.getAppId(resolvedApp.uid), "IF block");
             Intent blockIntent = new Intent("ariel.intent.action.APPLICATION_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -609,11 +607,10 @@ public class IntentFirewall {
                 if(pm!=null){
                     ApplicationInfo applicationInfo = null;
                     try {
-                        applicationInfo = pm.getApplicationInfo(packageName, 0, UserHandle.USER_SYSTEM);
+                        applicationInfo = pm.getApplicationInfo(packageName, 0, UserHandle.USER_OWNER);
                         if (applicationInfo != null) {
-                            mAms.killApplication(packageName,
-                                    UserHandle.getAppId(applicationInfo.uid),
-                                    UserHandle.USER_SYSTEM, "IF block");
+                            mAms.killApplicationWithAppId(packageName,
+                                    UserHandle.getAppId(applicationInfo.uid), "IF block");
                         }
                     } catch (RemoteException e) {
                         e.printStackTrace();
@@ -688,7 +685,7 @@ public class IntentFirewall {
 
         void removeTasksByPackageNameLocked(String packageName, int userId);
 
-        void killApplication(String pkg, int appId, int userId, String reason);
+        void killApplicationWithAppId(String pkg, int appId, String reason);
     }
 
     /**
