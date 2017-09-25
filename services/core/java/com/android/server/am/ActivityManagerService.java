@@ -7752,6 +7752,11 @@ public final class ActivityManagerService extends ActivityManagerNative
         public void removeTasksByPackageNameLocked(String packageName, int userId) {
             ActivityManagerService.this.removeTasksByPackageNameLocked(packageName, userId);
         }
+
+        @Override
+        public void killApplication(String pkg, int appId, int userId, String reason) {
+            ActivityManagerService.this.killApplication(pkg, appId, userId, reason);
+        }
     }
 
     /**

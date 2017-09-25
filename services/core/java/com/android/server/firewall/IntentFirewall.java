@@ -33,10 +33,12 @@ import android.util.ArrayMap;
 import android.util.Log;
 import android.util.Slog;
 import android.util.Xml;
+
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.XmlUtils;
 import com.android.server.EventLogTags;
 import com.android.server.IntentResolver;
+
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -52,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 
 import ariel.platform.Manifest;
+
 import android.app.ActivityManagerNative;
 import android.os.UserHandle;
 import android.content.Context;
@@ -85,7 +88,7 @@ public class IntentFirewall {
     private FirewallIntentResolver mServiceResolver = new FirewallIntentResolver();
 
     static {
-        FilterFactory[] factories = new FilterFactory[] {
+        FilterFactory[] factories = new FilterFactory[]{
                 AndFilter.FACTORY,
                 OrFilter.FACTORY,
                 NotFilter.FACTORY,
@@ -110,7 +113,7 @@ public class IntentFirewall {
 
         // load factor ~= .75
         factoryMap = new HashMap<String, FilterFactory>(factories.length * 4 / 3);
-        for (int i=0; i<factories.length; i++) {
+        for (int i = 0; i < factories.length; i++) {
             FilterFactory factory = factories[i];
             factoryMap.put(factory.getTagName(), factory);
         }
@@ -133,11 +136,12 @@ public class IntentFirewall {
      * It is assumed the caller is already holding the global ActivityManagerService lock.
      */
     public boolean checkStartActivity(Intent intent, int callerUid, int callerPid,
-            String resolvedType, ApplicationInfo resolvedApp) {
+                                      String resolvedType, ApplicationInfo resolvedApp) {
         boolean block = checkIntent(mActivityResolver, intent.getComponent(), TYPE_ACTIVITY, intent,
                 callerUid, callerPid, resolvedType, resolvedApp.uid);
-        if(!block && ActivityManagerNative.isSystemReady()){
-            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        if (!block && ActivityManagerNative.isSystemReady()) {
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_ALL);
+            mAms.killApplication(resolvedApp.packageName, UserHandle.getAppId(resolvedApp.uid), UserHandle.USER_ALL, "IF block");
             Intent blockIntent = new Intent("ariel.intent.action.APPLICATION_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -145,12 +149,12 @@ public class IntentFirewall {
     }
 
     public boolean checkService(ComponentName resolvedService, Intent intent, int callerUid,
-            int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
+                                int callerPid, String resolvedType, ApplicationInfo resolvedApp) {
         boolean block = checkIntent(mServiceResolver, resolvedService, TYPE_SERVICE, intent, callerUid,
                 callerPid, resolvedType, resolvedApp.uid);
-        if(!block && ActivityManagerNative.isSystemReady()){
-            Log.i(TAG+"SERVICE", "BLOCKING SERVICE: "+intent.getComponent().getPackageName()+"."+intent.getComponent().getClassName());
-            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_OWNER);
+        if (!block && ActivityManagerNative.isSystemReady()) {
+            Log.i(TAG + "SERVICE", "BLOCKING SERVICE: " + intent.getComponent().getPackageName() + "." + intent.getComponent().getClassName());
+            mAms.removeTasksByPackageNameLocked(intent.getComponent().getPackageName(), UserHandle.USER_ALL);
             Intent blockIntent = new Intent("ariel.intent.action.SERVICE_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -158,10 +162,10 @@ public class IntentFirewall {
     }
 
     public boolean checkBroadcast(Intent intent, int callerUid, int callerPid,
-            String resolvedType, int receivingUid) {
+                                  String resolvedType, int receivingUid) {
         boolean block = checkIntent(mBroadcastResolver, intent.getComponent(), TYPE_BROADCAST, intent,
                 callerUid, callerPid, resolvedType, receivingUid);
-        if(!block && ActivityManagerNative.isSystemReady()){
+        if (!block && ActivityManagerNative.isSystemReady()) {
             Intent blockIntent = new Intent("ariel.intent.action.BROADCAST_BLOCKED");
             mAms.getContext().sendBroadcast(blockIntent, Manifest.permission.INTENT_FIREWALL);
         }
@@ -169,8 +173,8 @@ public class IntentFirewall {
     }
 
     public boolean checkIntent(FirewallIntentResolver resolver, ComponentName resolvedComponent,
-            int intentType, Intent intent, int callerUid, int callerPid, String resolvedType,
-            int receivingUid) {
+                               int intentType, Intent intent, int callerUid, int callerPid, String resolvedType,
+                               int receivingUid) {
         boolean log = false;
         boolean block = false;
 
@@ -184,13 +188,13 @@ public class IntentFirewall {
         // find component rules
         resolver.queryByComponent(resolvedComponent, candidateRules);
         // find package rules
-        if(resolvedComponent != null) {
+        if (resolvedComponent != null) {
             resolver.queryByPackage(resolvedComponent.getPackageName(), candidateRules);
         }
 
         // For the second pass, try to match the potentially more specific conditions in each
         // rule against the intent
-        for (int i=0; i<candidateRules.size(); i++) {
+        for (int i = 0; i < candidateRules.size(); i++) {
             Rule rule = candidateRules.get(i);
             if (rule.matches(this, resolvedComponent, intent, callerUid, callerPid, resolvedType,
                     receivingUid)) {
@@ -213,7 +217,7 @@ public class IntentFirewall {
     }
 
     private static void logIntent(int intentType, Intent intent, int callerUid,
-            String resolvedType) {
+                                  String resolvedType) {
         // The component shouldn't be null, but let's double check just to be safe
         ComponentName cn = intent.getComponent();
         String shortComponent = null;
@@ -244,11 +248,11 @@ public class IntentFirewall {
     /**
      * Joins a list of package names such that the resulting string is no more than
      * LOG_PACKAGES_MAX_LENGTH.
-     *
+     * <p>
      * Only full package names will be added to the result, unless every package is longer than the
      * limit, in which case one of the packages will be truncated and added. In this case, an
      * additional '-' character will be added to the end of the string, to denote the truncation.
-     *
+     * <p>
      * If it encounters a package that won't fit in the remaining space, it will continue on to the
      * next package, unless the total length of the built string so far is greater than
      * LOG_PACKAGES_SUFFICIENT_LENGTH, in which case it will stop and return what it has.
@@ -256,7 +260,7 @@ public class IntentFirewall {
     private static String joinPackages(String[] packages) {
         boolean first = true;
         StringBuilder sb = new StringBuilder();
-        for (int i=0; i<packages.length; i++) {
+        for (int i = 0; i < packages.length; i++) {
             String pkg = packages[i];
 
             // + 1 length for the comma. This logic technically isn't correct for the first entry,
@@ -288,25 +292,25 @@ public class IntentFirewall {
     /**
      * Reads rules from all xml files (*.xml) in the given directory, and replaces our set of rules
      * with the newly read rules.
-     *
+     * <p>
      * We only check for files ending in ".xml", to allow for temporary files that are atomically
      * renamed to .xml
-     *
+     * <p>
      * All calls to this method from the file observer come through a handler and are inherently
      * serialized
      */
     private void readRulesDir(File rulesDir) {
         FirewallIntentResolver[] resolvers = new FirewallIntentResolver[3];
-        for (int i=0; i<resolvers.length; i++) {
+        for (int i = 0; i < resolvers.length; i++) {
             resolvers[i] = new FirewallIntentResolver();
         }
 
         File[] files = rulesDir.listFiles();
         if (files != null) {
-            for (int i=0; i<files.length; i++) {
+            for (int i = 0; i < files.length; i++) {
                 File file = files[i];
 
-                Slog.i(TAG, "Reading file: "+file.getName());
+                Slog.i(TAG, "Reading file: " + file.getName());
 
                 if (file.getName().endsWith(".xml")) {
                     readRules(file, resolvers);
@@ -333,7 +337,7 @@ public class IntentFirewall {
         // add the rules all at once, after we know there weren't any major structural problems
         // with the xml file
         List<List<Rule>> rulesByType = new ArrayList<List<Rule>>(3);
-        for (int i=0; i<3; i++) {
+        for (int i = 0; i < 3; i++) {
             rulesByType.add(new ArrayList<Rule>());
         }
 
@@ -358,7 +362,7 @@ public class IntentFirewall {
 
                 String tagName = parser.getName();
 
-                Slog.i(TAG, "Reading tag: "+tagName);
+                Slog.i(TAG, "Reading tag: " + tagName);
 
                 if (tagName.equals(TAG_ACTIVITY)) {
                     ruleType = TYPE_ACTIVITY;
@@ -368,7 +372,7 @@ public class IntentFirewall {
                     ruleType = TYPE_SERVICE;
                 }
 
-                Slog.i(TAG, "Rule type: "+ruleType);
+                Slog.i(TAG, "Rule type: " + ruleType);
 
                 if (ruleType != -1) {
                     Rule rule = new Rule();
@@ -403,19 +407,19 @@ public class IntentFirewall {
             }
         }
 
-        for (int ruleType=0; ruleType<rulesByType.size(); ruleType++) {
+        for (int ruleType = 0; ruleType < rulesByType.size(); ruleType++) {
             List<Rule> rules = rulesByType.get(ruleType);
             FirewallIntentResolver resolver = resolvers[ruleType];
 
-            for (int ruleIndex=0; ruleIndex<rules.size(); ruleIndex++) {
+            for (int ruleIndex = 0; ruleIndex < rules.size(); ruleIndex++) {
                 Rule rule = rules.get(ruleIndex);
-                for (int i=0; i<rule.getIntentFilterCount(); i++) {
+                for (int i = 0; i < rule.getIntentFilterCount(); i++) {
                     resolver.addFilter(rule.getIntentFilter(i));
                 }
-                for (int i=0; i<rule.getComponentFilterCount(); i++) {
+                for (int i = 0; i < rule.getComponentFilterCount(); i++) {
                     resolver.addComponentFilter(rule.getComponentFilter(i), rule);
                 }
-                for (int i=0; i<rule.getPackageFilterCount(); i++) {
+                for (int i = 0; i < rule.getPackageFilterCount(); i++) {
                     resolver.addPackageFilter(rule.getPackageFilter(i), rule);
                 }
             }
@@ -435,19 +439,19 @@ public class IntentFirewall {
 
     /**
      * Represents a single activity/service/broadcast rule within one of the xml files.
-     *
+     * <p>
      * Rules are matched against an incoming intent in two phases. The goal of the first phase
      * is to select a subset of rules that might match a given intent.
-     *
+     * <p>
      * For the first phase, we use a combination of intent filters (via an IntentResolver)
      * and component filters to select which rules to check. If a rule has multiple intent or
      * component filters, only a single filter must match for the rule to be passed on to the
      * second phase.
-     *
+     * <p>
      * In the second phase, we check the specific conditions in each rule against the values in the
      * intent. All top level conditions (but not filters) in the rule must match for the rule as a
      * whole to match.
-     *
+     * <p>
      * If the rule matches, then we block or log the intent, as specified by the rule. If multiple
      * rules match, we combine the block/log flags from any matching rule.
      */
@@ -494,9 +498,8 @@ public class IntentFirewall {
                 ComponentName componentName = ComponentName.unflattenFromString(componentStr);
                 if (componentName == null) {
                     throw new XmlPullParserException("Invalid component name: " + componentStr);
-                }
-                else{
-                    Log.i(TAG, "Component package: "+componentName.getPackageName()+", class name: "+componentName.getClassName());
+                } else {
+                    Log.i(TAG, "Component package: " + componentName.getPackageName() + ", class name: " + componentName.getClassName());
                 }
 
                 mComponentFilters.add(componentName);
@@ -507,7 +510,7 @@ public class IntentFirewall {
                             parser, null);
                 }
 
-                Log.i(TAG, "Package name: "+packageString);
+                Log.i(TAG, "Package name: " + packageString);
 
                 mPackageFilters.add(packageString);
             } else {
@@ -556,7 +559,7 @@ public class IntentFirewall {
         }
     }
 
-    private static class FirewallIntentResolver
+    private class FirewallIntentResolver
             extends IntentResolver<FirewallIntentFilter, Rule> {
         @Override
         protected boolean allowFilterResult(FirewallIntentFilter filter, List<Rule> dest) {
@@ -601,6 +604,24 @@ public class IntentFirewall {
             Rule[] rules = mRulesByPackage.get(packageName);
             rules = ArrayUtils.appendElement(Rule.class, rules, rule);
             mRulesByPackage.put(packageName, rules);
+            // if the package is blocked
+            // kill the process immediately
+            if (rule.getBlock()) {
+                IPackageManager pm = AppGlobals.getPackageManager();
+                if(pm!=null){
+                    ApplicationInfo applicationInfo = null;
+                    try {
+                        applicationInfo = pm.getApplicationInfo(packageName, 0, UserHandle.USER_SYSTEM);
+                        if (applicationInfo != null) {
+                            mAms.killApplication(packageName,
+                                    UserHandle.getAppId(applicationInfo.uid),
+                                    UserHandle.USER_SYSTEM, "IF block");
+                        }
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
         }
 
         public void queryByPackage(String packageName, List<Rule> candidateRules) {
@@ -628,14 +649,16 @@ public class IntentFirewall {
         public void handleMessage(Message msg) {
             readRulesDir(getRulesDir());
         }
-    };
+    }
+
+    ;
 
     /**
      * Monitors for the creation/deletion/modification of any .xml files in the rule directory
      */
     private class RuleObserver extends FileObserver {
-        private static final int MONITORED_EVENTS = FileObserver.CREATE|FileObserver.MOVED_TO|
-                FileObserver.CLOSE_WRITE|FileObserver.DELETE|FileObserver.MOVED_FROM;
+        private static final int MONITORED_EVENTS = FileObserver.CREATE | FileObserver.MOVED_TO |
+                FileObserver.CLOSE_WRITE | FileObserver.DELETE | FileObserver.MOVED_FROM;
 
         public RuleObserver(File monitoredDir) {
             super(monitoredDir.getAbsolutePath(), MONITORED_EVENTS);
@@ -645,7 +668,7 @@ public class IntentFirewall {
         public void onEvent(int event, String path) {
             if (path.endsWith(".xml")) {
 
-                Slog.i(TAG, "Detected file: "+path);
+                Slog.i(TAG, "Detected file: " + path);
 
                 // we wait 250ms before taking any action on an event, in order to dedup multiple
                 // events. E.g. a delete event followed by a create event followed by a subsequent
@@ -663,25 +686,29 @@ public class IntentFirewall {
      */
     public interface AMSInterface {
         int checkComponentPermission(String permission, int pid, int uid,
-                int owningUid, boolean exported);
+                                     int owningUid, boolean exported);
+
         Object getAMSLock();
+
         Context getContext();
 
         void removeTasksByPackageNameLocked(String packageName, int userId);
+
+        void killApplication(String pkg, int appId, int userId, String reason);
     }
 
     /**
      * Checks if the caller has access to a component
      *
      * @param permission If present, the caller must have this permission
-     * @param pid The pid of the caller
-     * @param uid The uid of the caller
-     * @param owningUid The uid of the application that owns the component
-     * @param exported Whether the component is exported
+     * @param pid        The pid of the caller
+     * @param uid        The uid of the caller
+     * @param owningUid  The uid of the application that owns the component
+     * @param exported   Whether the component is exported
      * @return True if the caller can access the described component
      */
     boolean checkComponentPermission(String permission, int pid, int uid, int owningUid,
-            boolean exported) {
+                                     boolean exported) {
         return mAms.checkComponentPermission(permission, pid, uid, owningUid, exported) ==
                 PackageManager.PERMISSION_GRANTED;
     }
