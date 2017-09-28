@@ -22,6 +22,8 @@ import android.telephony.SubscriptionManager;
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.widget.LockPatternUtils;
 
+import ariel.providers.ArielSettings;
+
 public class KeyguardSecurityModel {
 
     /**
@@ -35,7 +37,8 @@ public class KeyguardSecurityModel {
         Password, // Unlock by entering an alphanumeric password
         PIN, // Strictly numeric password
         SimPin, // Unlock by entering a sim pin.
-        SimPuk // Unlock by entering a sim puk
+        SimPuk, // Unlock by entering a sim puk
+        ArielPIN // PIN Unlock screen specific to ArielOS
     }
 
     private final Context mContext;
@@ -55,37 +58,47 @@ public class KeyguardSecurityModel {
     }
 
     SecurityMode getSecurityMode() {
-        KeyguardUpdateMonitor monitor = KeyguardUpdateMonitor.getInstance(mContext);
 
-        if (SubscriptionManager.isValidSubscriptionId(
-                monitor.getNextSubIdForState(IccCardConstants.State.PIN_REQUIRED))) {
-            return SecurityMode.SimPin;
+        int arielSystemStatus = ArielSettings.Secure.getInt(mContext.getContentResolver(),
+                ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
+                ArielSettings.Secure.ARIEL_SYSTEM_STATUS_NORMAL);
+
+        if (arielSystemStatus == ArielSettings.Secure.ARIEL_SYSTEM_STATUS_LOCKDOWN){
+            return SecurityMode.ArielPIN;
         }
+        else{
+            KeyguardUpdateMonitor monitor = KeyguardUpdateMonitor.getInstance(mContext);
 
-        if (mIsPukScreenAvailable && SubscriptionManager.isValidSubscriptionId(
-                monitor.getNextSubIdForState(IccCardConstants.State.PUK_REQUIRED))) {
-            return SecurityMode.SimPuk;
-        }
+            if (SubscriptionManager.isValidSubscriptionId(
+                    monitor.getNextSubIdForState(IccCardConstants.State.PIN_REQUIRED))) {
+                return SecurityMode.SimPin;
+            }
 
-        final int security = mLockPatternUtils.getActivePasswordQuality(
-                KeyguardUpdateMonitor.getCurrentUser());
-        switch (security) {
-            case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC:
-            case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX:
-                return SecurityMode.PIN;
+            if (mIsPukScreenAvailable && SubscriptionManager.isValidSubscriptionId(
+                    monitor.getNextSubIdForState(IccCardConstants.State.PUK_REQUIRED))) {
+                return SecurityMode.SimPuk;
+            }
 
-            case DevicePolicyManager.PASSWORD_QUALITY_ALPHABETIC:
-            case DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC:
-            case DevicePolicyManager.PASSWORD_QUALITY_COMPLEX:
-                return SecurityMode.Password;
+            final int security = mLockPatternUtils.getActivePasswordQuality(
+                    KeyguardUpdateMonitor.getCurrentUser());
+            switch (security) {
+                case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX:
+                    return SecurityMode.PIN;
 
-            case DevicePolicyManager.PASSWORD_QUALITY_SOMETHING:
-                return SecurityMode.Pattern;
-            case DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED:
-                return SecurityMode.None;
+                case DevicePolicyManager.PASSWORD_QUALITY_ALPHABETIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC:
+                case DevicePolicyManager.PASSWORD_QUALITY_COMPLEX:
+                    return SecurityMode.Password;
 
-            default:
-                throw new IllegalStateException("Unknown security quality:" + security);
+                case DevicePolicyManager.PASSWORD_QUALITY_SOMETHING:
+                    return SecurityMode.Pattern;
+                case DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED:
+                    return SecurityMode.None;
+
+                default:
+                    throw new IllegalStateException("Unknown security quality:" + security);
+            }
         }
     }
 }

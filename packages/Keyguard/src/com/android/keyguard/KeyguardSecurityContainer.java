@@ -190,6 +190,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
                 messageId = R.string.kg_too_many_failed_pattern_attempts_dialog_message;
                 break;
             case PIN:
+            case ArielPIN:
                 messageId = R.string.kg_too_many_failed_pin_attempts_dialog_message;
                 break;
             case Password:
@@ -329,6 +330,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
                 case Pattern:
                 case Password:
                 case PIN:
+                case ArielPIN:
                     strongAuth = true;
                     finish = true;
                     break;
@@ -462,6 +464,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
             case Password: return R.id.keyguard_password_view;
             case SimPin: return R.id.keyguard_sim_pin_view;
             case SimPuk: return R.id.keyguard_sim_puk_view;
+            case ArielPIN: return R.id.keyguard_ariel_pin_view;
         }
         return 0;
     }
@@ -473,6 +476,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
             case Password: return R.layout.keyguard_password_view;
             case SimPin: return R.layout.keyguard_sim_pin_view;
             case SimPuk: return R.layout.keyguard_sim_puk_view;
+            case ArielPIN: return R.layout.keyguard_ariel_pin_view;
             default:
                 return 0;
         }
