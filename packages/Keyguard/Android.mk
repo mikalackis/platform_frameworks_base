@@ -24,6 +24,8 @@ LOCAL_CERTIFICATE := platform
 
 LOCAL_JAVA_LIBRARIES := SettingsLib
 
+LOCAL_STATIC_JAVA_LIBRARIES := com.ariel.platform.internal
+
 LOCAL_PRIVILEGED_MODULE := true
 
 LOCAL_PROGUARD_FLAG_FILES := proguard.flags
