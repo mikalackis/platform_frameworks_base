@@ -23,6 +23,7 @@ import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.widget.LockPatternUtils;
 
 import ariel.providers.ArielSettings;
+import android.util.Log;
 
 public class KeyguardSecurityModel {
 
@@ -59,9 +60,22 @@ public class KeyguardSecurityModel {
 
     SecurityMode getSecurityMode() {
 
+        if(mContext != null){
+            Log.v("KeyguardSecurityModel", "Context is not null!");
+        }
+
+        if(mContext.getContentResolver() != null){
+            Log.v("KeyguardSecurityModel", "ContentResolver is not null");
+        }
+        else{
+            Log.v("KeyguardSecurityModel", "ContentResolver is null");
+        }
+
         int arielSystemStatus = ArielSettings.Secure.getInt(mContext.getContentResolver(),
                 ArielSettings.Secure.ARIEL_SYSTEM_STATUS,
                 ArielSettings.Secure.ARIEL_SYSTEM_STATUS_NORMAL);
+
+        Log.v("KeyguardSecurityModel", "ArielSystemStatus: "+arielSystemStatus);
 
         if (arielSystemStatus == ArielSettings.Secure.ARIEL_SYSTEM_STATUS_LOCKDOWN){
             return SecurityMode.ArielPIN;

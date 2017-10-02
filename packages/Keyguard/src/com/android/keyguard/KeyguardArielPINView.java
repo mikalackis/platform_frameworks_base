@@ -18,6 +18,7 @@ package com.android.keyguard;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
@@ -32,6 +33,7 @@ public class KeyguardArielPINView extends KeyguardPinBasedInputView {
 
     private final AppearAnimationUtils mAppearAnimationUtils;
     private final DisappearAnimationUtils mDisappearAnimationUtils;
+    private final DisappearAnimationUtils mDisappearAnimationUtilsLocked;
     private ViewGroup mContainer;
     private ViewGroup mRow0;
     private ViewGroup mRow1;
@@ -40,6 +42,8 @@ public class KeyguardArielPINView extends KeyguardPinBasedInputView {
     private View mDivider;
     private int mDisappearYTranslation;
     private View[][] mViews;
+    private final KeyguardUpdateMonitor mKeyguardUpdateMonitor;
+    private KeyguardMessageArea mMessageAreaLarge;
 
     public KeyguardArielPINView(Context context) {
         this(context, null);
@@ -52,15 +56,24 @@ public class KeyguardArielPINView extends KeyguardPinBasedInputView {
                 125, 0.6f /* translationScale */,
                 0.45f /* delayScale */, AnimationUtils.loadInterpolator(
                         mContext, android.R.interpolator.fast_out_linear_in));
+        mDisappearAnimationUtilsLocked = new DisappearAnimationUtils(context,
+                (long) (125 * KeyguardPatternView.DISAPPEAR_MULTIPLIER_LOCKED),
+                0.6f /* translationScale */,
+                0.45f /* delayScale */, AnimationUtils.loadInterpolator(
+                        mContext, android.R.interpolator.fast_out_linear_in));
         mDisappearYTranslation = getResources().getDimensionPixelSize(
                 R.dimen.disappear_y_translation);
+        mKeyguardUpdateMonitor = KeyguardUpdateMonitor.getInstance(context);
 
-        mSecurityMessageDisplay.setMessage("I AM IN LOCKDOWN", true);
+        Log.v("KeyguardSecurityModel", "I am inflated!");
     }
 
+    @Override
     protected void resetState() {
         super.resetState();
         mSecurityMessageDisplay.setMessage(R.string.kg_pin_instructions, false);
+        setPasswordEntryEnabled(false);
+        setPasswordEntryInputEnabled(false);
     }
 
     @Override
@@ -100,6 +113,14 @@ public class KeyguardArielPINView extends KeyguardPinBasedInputView {
                 new View[]{
                         null, mEcaView, null
                 }};
+
+        mMessageAreaLarge = (KeyguardMessageArea) findViewById(
+                R.id.keyguard_message_area_large);
+
+        mMessageAreaLarge.setMessage("Abrakadabra bre!", true);
+
+        setPasswordEntryEnabled(false);
+        setPasswordEntryInputEnabled(false);
     }
 
     @Override
@@ -133,7 +154,11 @@ public class KeyguardArielPINView extends KeyguardPinBasedInputView {
         setTranslationY(0);
         AppearAnimationUtils.startTranslationYAnimation(this, 0 /* delay */, 280 /* duration */,
                 mDisappearYTranslation, mDisappearAnimationUtils.getInterpolator());
-        mDisappearAnimationUtils.startAnimation2d(mViews,
+        DisappearAnimationUtils disappearAnimationUtils = mKeyguardUpdateMonitor
+                .needsSlowUnlockTransition()
+                        ? mDisappearAnimationUtilsLocked
+                        : mDisappearAnimationUtils;
+        disappearAnimationUtils.startAnimation2d(mViews,
                 new Runnable() {
                     @Override
                     public void run() {
