@@ -464,7 +464,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
             case Password: return R.id.keyguard_password_view;
             case SimPin: return R.id.keyguard_sim_pin_view;
             case SimPuk: return R.id.keyguard_sim_puk_view;
-            case ArielPIN: return R.id.keyguard_ariel_pin_view;
+            case ArielPIN: return R.id.keyguard_ariel_lock_view;
         }
         return 0;
     }
@@ -476,7 +476,7 @@ public class KeyguardSecurityContainer extends FrameLayout implements KeyguardSe
             case Password: return R.layout.keyguard_password_view;
             case SimPin: return R.layout.keyguard_sim_pin_view;
             case SimPuk: return R.layout.keyguard_sim_puk_view;
-            case ArielPIN: return R.layout.keyguard_ariel_pin_view;
+            case ArielPIN: return R.layout.keyguard_ariel_lock_view;
             default:
                 return 0;
         }
