@@ -44,11 +44,9 @@ public class KeyguardArielLockView extends LinearLayout
 
     private final AppearAnimationUtils mAppearAnimationUtils;
     private final DisappearAnimationUtils mDisappearAnimationUtils;
-    private final DisappearAnimationUtils mDisappearAnimationUtilsLocked;
     private View mDivider;
     private int mDisappearYTranslation;
     private View[][] mViews;
-    private final KeyguardUpdateMonitor mKeyguardUpdateMonitor;
     private TextView mAdminInfo;
     private Button btnCallAdmin;
     private NumPadKey mKeyClearAriel;
@@ -64,15 +62,8 @@ public class KeyguardArielLockView extends LinearLayout
                 125, 0.6f /* translationScale */,
                 0.45f /* delayScale */, AnimationUtils.loadInterpolator(
                 mContext, android.R.interpolator.fast_out_linear_in));
-        mDisappearAnimationUtilsLocked = new DisappearAnimationUtils(context,
-                (long) (125 * KeyguardPatternView.DISAPPEAR_MULTIPLIER_LOCKED),
-                0.6f /* translationScale */,
-                0.45f /* delayScale */, AnimationUtils.loadInterpolator(
-                mContext, android.R.interpolator.fast_out_linear_in));
         mDisappearYTranslation = getResources().getDimensionPixelSize(
                 R.dimen.disappear_y_translation);
-        mKeyguardUpdateMonitor = KeyguardUpdateMonitor.getInstance(context);
-
         Log.v("KeyguardSecurityModel", "I am inflated!");
     }
 
