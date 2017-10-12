@@ -125,6 +125,10 @@ import java.util.concurrent.Future;
 
 import static android.view.Display.DEFAULT_DISPLAY;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 public final class SystemServer {
     private static final String TAG = "SystemServer";
 
@@ -1555,7 +1559,7 @@ public final class SystemServer {
                 | InstantiationException
                 | NoSuchMethodException e) {
             Slog.wtf(TAG, "Unable to start  " + externalServer);
-            Slog.wtf(TAG, e);
+            Slog.wtf(TAG, e.getMessage());
         }
 
         traceBeginAndSlog("StartRetailDemoModeService");

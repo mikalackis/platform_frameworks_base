@@ -249,6 +249,8 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
 
+import ariel.providers.ArielSettings;
+
 /**
  * WindowManagerPolicy implementation for the Android phone UI.  This
  * introduces a new method suffix, Lp, for an internal lock of the

@@ -22,7 +22,7 @@ import android.telephony.SubscriptionManager;
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.widget.LockPatternUtils;
 
-import ariel.providers.ArielSettings
+import ariel.providers.ArielSettings;
 
 public class KeyguardSecurityModel {
 
