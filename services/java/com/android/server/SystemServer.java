@@ -1592,10 +1592,6 @@ public final class SystemServer {
             Slog.wtf(TAG, e.getMessage());
         }
 
-        traceBeginAndSlog("StartRetailDemoModeService");
-        mSystemServiceManager.startService(RetailDemoModeService.class);
-        traceEnd();
-
         if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_AUTOFILL)) {
             traceBeginAndSlog("StartAutoFillService");
             mSystemServiceManager.startService(AUTO_FILL_MANAGER_SERVICE_CLASS);
